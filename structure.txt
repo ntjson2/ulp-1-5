@@ -1,0 +1,23 @@
+ulp-1.5/
+├── README.md                       # Complete setup guide
+├── .env.example                    # Environment template
+├── Cargo.toml                      # Rust config
+├── scripts/
+│   ├── deploy_contracts.sh         # 1-click deployment
+│   ├── setup_gcp.sh                # Cloud initialization
+│   └── monitor.sh                  # Performance tracking
+├── src/
+│   ├── main.rs                     # Bot entry point
+│   ├── scanner.rs                  # Arb detection
+│   ├── executor.rs                 # Transaction handling
+│   └── utils.rs                    # Helpers
+├── contracts/
+│   ├── FlashExecutor.huff          # Balancer flash loans
+│   ├── UniV4Swapper.huff           # Uniswap V4 swaps
+│   └── artifacts/                  # Compiled contracts
+├── config/
+│   ├── chains.toml                 # L2 configurations
+│   └── pairs.toml                  # Target pairs
+└── tests/
+    ├── gas_test.rs                 # Gas estimation
+    └── integration_test.rs         # End-to-end tests
