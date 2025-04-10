@@ -1,0 +1,10 @@
+[package]
+name = "ulp1_5"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ethers = { version = "2.0", features = ["abigen", "legacy", "ws"] }
+tokio = { version = "1.37", features = ["full"] }
+hex = "0.4"
+eyre = "0.6"
