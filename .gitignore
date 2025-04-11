@@ -21,7 +21,8 @@ target/
 
 /target
 
-
+# Exclude the huff.exe tool
+tools/huff.exe
 # Added by cargo
 #
 # already existing elements were commented out
