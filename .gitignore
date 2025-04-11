@@ -18,7 +18,8 @@ target/
 #.idea/
 
 # Added by cargo
-
+huff-neo/
+huff-neo.exe
 /target
 
 # Exclude the huff.exe tool

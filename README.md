@@ -1,34 +1,21 @@
 # ulp-1-5
 
+## About this project
+
+
 ## Compile from Huff
+.\tools\huff-neo.exe contracts\FlashExecutor.huff --bytecode --alt-main FLASH_LOAN_404
 
-
-Here’s a summary of the last few issues and how they were resolved:
-
-❌ Error: stream did not contain valid UTF-8
-
-Fix: You tried reading a compiled .bin file with read_to_string, which expects UTF-8. Replaced it with std::fs::read to load raw bytes.
-
-❌ Error: Invalid character 'ï' at position 0
-
-Fix: This was caused by a BOM (Byte Order Mark) or saving the .bin file with incorrect encoding. Ensured output was saved using Out-File -Encoding ASCII or > in a shell that doesn’t prepend BOMs.
-
-❌ Error: No connection could be made because the target machine actively refused it
-
-Fix: Anvil (the local Ethereum testnet) wasn’t running. Started Anvil with anvil in WSL to enable RPC at http://localhost:8545.
-
-❌ Error: EVM error StackUnderflow
-
-Fix: Tried to deploy raw logic bytecode without a constructor. Recompiled with the -f (constructor wrapper) flag using:
-
-powershell
-Copy
-Edit
-.\tools\huff.exe -f contracts\FlashExecutor.huff FLASH_LOAN_404 > build\flash_executor.bin
-✅ Final success:
-
-After the above, cargo run successfully deployed FlashExecutor with no EVM errors and printed the deployed address.
-
-$hex = (.\\tools\\huff.exe contracts\\UniV4Swapper.huff UNI_V4_SWAP) -replace "^0x", ""
+## to build folder
+$hex = "60538060093d393df360043560243560443573ba12222222228d8ba445958a75a0704d566bf2c95af160643560843563a9059cbb5f52906020529160405260605ff173ba12222222228d8ba445958a75a0704d566bf2c95f5f5f5af1"
 $bytes = for ($i = 0; $i -lt $hex.Length; $i += 2) { [Convert]::ToByte($hex.Substring($i, 2), 16) }
-[IO.File]::WriteAllBytes("build\\uni_v4_swapper.bin", $bytes)
+[IO.File]::WriteAllBytes("build\flash_executor.bin", $bytes)
+
+Bytecode saved successfully to build\flash_executor.bin using Huff-Neo output!
+
+$hex = "60088060093d393df360605f60605f60f3"
+$bytes = for ($i = 0; $i -lt $hex.Length; $i += 2) { [Convert]::ToByte($hex.Substring($i, 2), 16) }
+[IO.File]::WriteAllBytes("build\uni_v4_swapper.bin", $bytes)
+
+## Fire up anvil
+cmd -> WSL -> ntjson@LAPTOP-74NQ7BNG:~$ anvil
