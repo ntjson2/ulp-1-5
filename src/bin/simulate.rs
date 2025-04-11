@@ -1,43 +1,60 @@
-use ethers::prelude::*;
+use ethers::{
+    prelude::*,
+    types::transaction::eip2718::TypedTransaction,
+    abi::Token,
+};
+use std::{sync::Arc, str::FromStr, time::Duration};
 use eyre::Result;
-use std::{sync::Arc, time::Duration};
 
+/// Simulates Strategy 1: Two-Way Classic Spread Arbitrage using the FlashExecutor contract.
+/// This is a local simulation only — it assumes Anvil is running and both contracts are deployed.
 #[tokio::main]
 async fn main() -> Result<()> {
-    // === 1. Setup Local Provider (Anvil) ===
+    // === Setup signer and provider to Anvil (localhost:8545) ===
     let provider = Provider::<Http>::try_from("http://localhost:8545")?
         .interval(Duration::from_millis(10));
-
-    // === 2. Load Private Key ===
-    // This uses the default Anvil account[0] with known test key
     let wallet: LocalWallet = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
         .parse::<LocalWallet>()?
         .with_chain_id(31337u64);
+    let client = Arc::new(SignerMiddleware::new(provider, wallet));
 
-    // === 3. Wrap Provider + Wallet into a Middleware Client ===
-    let client = Arc::new(SignerMiddleware::new(provider.clone(), wallet));
+    // === Address of deployed FlashExecutor contract ===
+    let executor_address = Address::from_str("0x8464135c8f25da09e49bc8782676a84730c318bc")?;
 
-    // === 4. Attach FlashExecutor Contract ===
-    let flash_executor_addr: Address = "0x8464135c8f25da09e49bc8782676a84730c318bc".parse()?;
-    let flash_executor = Contract::new(flash_executor_addr, Abi::default(), client.clone());
+    // === Run flashloan simulation ===
+    simulate_flashloan(client, executor_address).await
+}
 
-    // === 5. Attach UniV4Swapper Contract ===
-    let univ4_swapper_addr: Address = "0x71c95911e9a5d330f4d621842ec243ee1343292e".parse()?;
-    let univ4_swapper = Contract::new(univ4_swapper_addr, Abi::default(), client.clone());
+/// Internal logic for calling FLASH_LOAN_404 macro with mock inputs.
+/// Order: token, amount, dex1, dex2, initiator.
+pub async fn simulate_flashloan(
+    client: Arc<SignerMiddleware<Provider<Http>, Wallet<k256::ecdsa::SigningKey>>>,
+    executor_address: Address,
+) -> Result<()> {
+    let token_address = Address::from_str("0x4200000000000000000000000000000000000006")?;
+    let amount = U256::from_dec_str("1000000000000000000")?;
+    let dex1 = Address::from_str("0x1111111254EEB25477B68fb85Ed929f73A960582")?;
+    let dex2 = Address::from_str("0xE592427A0AEce92De3Edee1F18E0157C05861564")?;
+    let initiator = client.address();
 
-    // === 6. Simulate Arbitrage ===
-    println!("🚀 Beginning Arbitrage Simulation...");
+    let calldata = ethers::abi::encode(&[
+        Token::Address(token_address),
+        Token::Uint(amount),
+        Token::Address(dex1),
+        Token::Address(dex2),
+        Token::Address(initiator),
+    ]);
 
-    // (Placeholder logic) You will replace this call with real logic:
-    // - set calldata manually for flash loan initiation
-    // - or trigger a testSwap function if defined
+    let tx = TypedTransaction::Legacy(TransactionRequest {
+        to: Some(NameOrAddress::Address(executor_address)),
+        data: Some(calldata.into()),
+        ..Default::default()
+    });
 
-    let tx = flash_executor
-        .method::<_, H256>("execute", ())?  // Dummy function; replace with real logic
-        .send()
-        .await?;
+    let receipt = client.send_transaction(tx, None).await?
+        .await?
+        .ok_or_else(|| eyre::eyre!("Transaction failed or reverted"))?;
 
-    println!("✅ Arbitrage tx hash: {:?}", tx);
-
+    println!("✅ FlashLoan executed. Tx Hash: {:?}", receipt.transaction_hash);
     Ok(())
 }

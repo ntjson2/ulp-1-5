@@ -1,6 +1,6 @@
 # ulp-1-5
 
-## About this project - ULP 1.5
+##  
 ULP 1.5 — Unified Liquidity Profiteer (GLP1.0 Core)
 ULP 1.5 is a high-efficiency MEV arbitrage system built on Huff2 + Rust, optimized for L2 execution (Optimism, Base, Arbitrum). It implements the GLP1.0 strategy suite:
 
