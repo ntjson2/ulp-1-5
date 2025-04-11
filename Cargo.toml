@@ -8,3 +8,7 @@ ethers = { version = "2.0", features = ["abigen", "legacy", "ws"] }
 tokio = { version = "1.37", features = ["full"] }
 hex = "0.4"
 eyre = "0.6"
+
+[[bin]]
+name = "simulate"
+path = "src/bin/simulate.rs"
