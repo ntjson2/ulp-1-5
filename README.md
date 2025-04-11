@@ -1,7 +1,29 @@
 # ulp-1-5
 
-## About this project
+## About this project - ULP 1.5
+ULP 1.5 — Unified Liquidity Profiteer (GLP1.0 Core)
+ULP 1.5 is a high-efficiency MEV arbitrage system built on Huff2 + Rust, optimized for L2 execution (Optimism, Base, Arbitrum). It implements the GLP1.0 strategy suite:
 
+- 2-Way Classic Spread Arbitrage
+
+- 3-Way Triangular Arbitrage
+
+- 10-Pair Scanner Arbitrage
+
+- High-Frequency Micro Trades
+
+- Stablecoin Delta Arbitrage
+
+The system uses:
+
+Huff-Neo flashloan contracts for atomic execution with ultra-low gas overhead
+
+Rust-based bot engine (ethers-rs + tokio) for real-time subgraph polling and trade execution
+
+Balancer flashloans + multi-DEX routing (Uniswap V4, Velodrome, Ramses)
+
+📈 Target ROI: $500–$40,800/day from realistic L2 arbitrage opportunities
+🖥️ Deployment-ready on GCP VPS with full automation support
 
 ## Compile from Huff
 .\tools\huff-neo.exe contracts\FlashExecutor.huff --bytecode --alt-main FLASH_LOAN_404
