@@ -28,3 +28,7 @@ Edit
 ✅ Final success:
 
 After the above, cargo run successfully deployed FlashExecutor with no EVM errors and printed the deployed address.
+
+$hex = (.\\tools\\huff.exe contracts\\UniV4Swapper.huff UNI_V4_SWAP) -replace "^0x", ""
+$bytes = for ($i = 0; $i -lt $hex.Length; $i += 2) { [Convert]::ToByte($hex.Substring($i, 2), 16) }
+[IO.File]::WriteAllBytes("build\\uni_v4_swapper.bin", $bytes)
