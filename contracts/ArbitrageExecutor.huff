@@ -1,5 +1,5 @@
 // File: ArbitrageExecutor.huff
-// Version: 1.1 (Optimized with Callback Amount Capture & Withdrawal)
+// Version: 1.1.1 (Compatibility fix for huff-neo.rs - no inline defines)
 // Purpose: Gas-optimized Uniswap V3 2-way arbitrage executor for Balancer V2 flash loans.
 
 // =======================================================
@@ -10,7 +10,7 @@
 #define constant APPROVE_SELECTOR = 0x095ea7b3
 #define constant SWAP_SELECTOR = 0x022c0d9f
 #define constant TRANSFER_SELECTOR = 0xa9059cbb
-#define constant BALANCE_OF_SELECTOR = 0x70a08231 // Still needed for withdrawal check
+#define constant BALANCE_OF_SELECTOR = 0x70a08231 // Needed for withdrawal check
 
 // Flash Loan Related Constants
 #define constant RECEIVE_FLASH_LOAN_SELECTOR = 0xf3f18ace
@@ -38,20 +38,17 @@
 #define constant MEM_EXTERNAL_CALL_BUFFER = 0x100 // Buffer for swap/approve calldata
 
 // =======================================================
-// Interface Definitions (for clarity)
+// Interface Definitions (Commented Out for huff-neo compatibility)
 // =======================================================
-//#define function receiveFlashLoan(address[],uint256[],uint256[],bytes) view returns (bytes32)
-//#define function uniswapV3SwapCallback(int256 amount0Delta, int256 amount1Delta, bytes data) nonpayable
-//#define function withdrawToken(address token, address recipient) nonpayable
+// #define function receiveFlashLoan(address[],uint256[],uint256[],bytes) view returns (bytes32)
+// #define function uniswapV3SwapCallback(int256 amount0Delta, int256 amount1Delta, bytes data) nonpayable
+// #define function withdrawToken(address token, address recipient) nonpayable
 
 // =======================================================
 // Constructor Macro (Sets Immutable Owner)
 // =======================================================
 // This macro runs ONLY during deployment.
 #define macro CONSTRUCTOR() = takes(0) returns (0) {
-    // Copy the deployer's address from calldata
-    // Assumes deployer address is appended to creation code (standard proxy pattern)
-    // Or simply use caller() if deployed directly by owner EOA
     caller                     // [deployer_address]
     [OWNER_SLOT]               // [OWNER_SLOT, deployer_address]
     sstore                     // Store deployer_address in storage slot 0
@@ -64,14 +61,14 @@
 // @notice Handles payment requested by the Uniswap V3 pool during a swap.
 //         Crucially, it stores the amount received into memory slot MEM_RECEIVED_AMOUNT_SLOT.
 #define macro UNISWAP_V3_SWAP_CALLBACK() = takes(0) returns (0) {
-    // Calldata offsets (relative to start of arguments, after selector)
-    #define cd_amount0Delta 0x04
-    #define cd_amount1Delta 0x24
-    #define cd_dataPtr      0x44
+    // Calldata offsets (relative to start of arguments, after selector) used directly below:
+    // amount0Delta: 0x04
+    // amount1Delta: 0x24
+    // dataPtr:      0x44
 
     // Load deltas
-    [cd_amount0Delta] calldataload // [amount0Delta]
-    [cd_amount1Delta] calldataload // [amount1Delta, amount0Delta]
+    0x04 calldataload // [amount0Delta]
+    0x24 calldataload // [amount1Delta, amount0Delta]
 
     // Check if Token0 needs to be paid (amount0Delta < 0)
     dup1 0x00 gt pay_token1 jumpi // If amount0Delta > 0, we received token0, jump to pay_token1 logic
@@ -84,7 +81,7 @@
     swap1 [MEM_RECEIVED_AMOUNT_SLOT] mstore // Store amount1Delta, stack: [amount_to_pay]
 
     // Load token0 address from callback data (data starts after selector & length)
-    [cd_dataPtr] calldataload 0x24 add calldataload // [token0_addr, amount_to_pay]
+    0x44 calldataload 0x24 add calldataload // [token0_addr, amount_to_pay]
 
     // Prepare token0.transfer(pool, amount_to_pay) calldata in buffer
     [TRANSFER_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore
@@ -109,7 +106,7 @@ pay_token1:
     0x00 swap1 sub // [-amount1Delta] (amount_to_pay)
 
     // Load token1 address from callback data (token1 is at offset 32 in data)
-    [cd_dataPtr] calldataload 0x24 add 0x20 add calldataload // [token1_addr, amount_to_pay]
+    0x44 calldataload 0x24 add 0x20 add calldataload // [token1_addr, amount_to_pay]
 
     // Prepare token1.transfer(pool, amount_to_pay) calldata in buffer
     [TRANSFER_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore
@@ -180,19 +177,14 @@ revert_if_zero: // Reusable revert check
     0x00 mload      [MEM_EXTERNAL_CALL_BUFFER + 0x44] mstore // amountSpecified (loan_amount)
     swap1           [MEM_EXTERNAL_CALL_BUFFER + 0x64] mstore // sqrtPriceLimit (was top)
     // Stack: [zeroForOne_swap1, token1, pool_B, pool_A]
-    0x80            [MEM_EXTERNAL_CALL_BUFFER + 0x84] mstore // Offset to callback data (relative to start of args)= 5*32=160=0xA0?? NO! Relative to MEM_EXTERNAL_CALL_BUFFER+4
-                                                              // Let's re-calculate: Args start at +4. Need space for 5 args (160 bytes). Data offset is 160 = 0xA0.
-                                                              // Offset field value should be 0xA0. Stored at +0x84 relative to buffer start.
+    0xA0            [MEM_EXTERNAL_CALL_BUFFER + 0x84] mstore // Offset to callback data = 0xA0.
+
     // Callback data length & content in buffer
     0x40            [MEM_EXTERNAL_CALL_BUFFER + 0xA4] mstore // Callback data Length (64 bytes)
     [MEM_CALLBACK_DATA_START] mload [MEM_EXTERNAL_CALL_BUFFER + 0xC4] mstore // Callback data[0] (token0)
     [MEM_CALLBACK_DATA_START + 0x20] mload [MEM_EXTERNAL_CALL_BUFFER + 0xE4] mstore // Callback data[1] (token1)
 
-    #define SWAP1_CALLDATA_SIZE 0x104 // 4 selector + 5 args (160) + data offset (32) + data length (32) + data (64) = 292 = 0x124. NO, size is size of CALLDATA, not buffer structure.
-                                      // Calldata = selector + args = 4 + 5*32 + offset_arg + data_len + data = 4 + 160 + 32 + 32 + 64 = 292 = 0x124
-                                      // The `swap` function signature defines the layout. Offset points within calldata.
-                                      // Calldata: selector(4) + recipient(32) + zeroForOne(32) + amount(32) + limit(32) + dataOffset(32) + dataLen(32) + data(N)
-                                      // Here N=64. Total = 4+5*32+32+64 = 4+160+32+64 = 260 = 0x104. Correct.
+    #define SWAP1_CALLDATA_SIZE 0x104 // selector + 5 args + data offset + data len + data = 4 + 160 + 32 + 32 + 64 = 292 = 0x124? NO, Size is from argsOffset to end = 0x104
 
     // Execute pool_A.swap(...)
     // Stack: [zeroForOne_swap1, token1, pool_B, pool_A]
