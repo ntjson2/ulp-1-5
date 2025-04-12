@@ -1,0 +1,16 @@
+# foundry.toml
+[profile.default]
+src = 'src'
+out = 'out'
+libs = ['lib']
+
+# Add remappings if needed, e.g.:
+# remappings = [
+#     '@uniswap/v4-core/=lib/v4-core/src/',
+#     ...
+# ]
+
+# Example using git submodules:
+# Make sure you have initialized them:
+# git submodule add https://github.com/Uniswap/v4-core lib/v4-core
+# git submodule update --init --recursive
