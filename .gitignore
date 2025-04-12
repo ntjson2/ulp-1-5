@@ -30,6 +30,7 @@ huff-neo/
 huff-neo.exe
 /target
 
+
 # Exclude the huff.exe tool
 tools/huff.exe
 #/target
