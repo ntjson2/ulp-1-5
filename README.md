@@ -30,7 +30,13 @@ anvil --fork-url https://mainnet.optimism.io/
 
 ## Compile from Huff
 .\tools\huff-neo.exe contracts\FlashExecutor.huff --bytecode --alt-main FLASH_LOAN_404
-huffc huff_src/SimpleArb.huff -b > SimpleArb.bin
+
+
+../tools/huff-neo.exe SimpleArb.huff -r > ../build/SimpleArb.bin
+../tools/huff-neo.exe FlashExecutor.huff -r > ../build/flash_executor.bin --alt-main FLASH_LOAN_404
+../tools/huff-neo.exe UniV4Swapper.huff -r > ../build/uni_v4_swapper.bin --alt-main UNI_V4_SWAP
+
+
 
 ## to build folder
 $hex = "60538060093d393df360043560243560443573ba12222222228d8ba445958a75a0704d566bf2c95af160643560843563a9059cbb5f52906020529160405260605ff173ba12222222228d8ba445958a75a0704d566bf2c95f5f5f5af1"
@@ -39,6 +45,6 @@ $bytes = for ($i = 0; $i -lt $hex.Length; $i += 2) { [Convert]::ToByte($hex.Subs
 
 Bytecode saved successfully to build\flash_executor.bin using Huff-Neo output!
 
-$hex = "60088060093d393df360605f60605f60f3"
+$hex = "60018060093d393df300"
 $bytes = for ($i = 0; $i -lt $hex.Length; $i += 2) { [Convert]::ToByte($hex.Substring($i, 2), 16) }
-[IO.File]::WriteAllBytes("build\uni_v4_swapper.bin", $bytes)
+[IO.File]::WriteAllBytes("build\simple_arb.bin", $bytes)

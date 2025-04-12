@@ -1,0 +1,234 @@
+// File: ArbitrageExecutor.huff
+
+#define constant BALANCER_VAULT = 0xBA12222222228d8Ba445958a75a0704d566BF2C9
+#define constant APPROVE_SELECTOR = 0x095ea7b3
+#define constant SWAP_SELECTOR = 0x022c0d9f
+#define constant RECEIVE_FLASH_LOAN_SELECTOR = 0xf3f18ace
+#define constant RECEIVE_FLASH_LOAN_RETURN_VALUE = 0xa157427a8d45e187257fa91ff98f73367a3e04075e180055503bf726067157a9
+
+#define constant UNISWAP_V3_SWAP_CALLBACK_SELECTOR = 0xfa461e33
+
+// TickMath constants for sqrtPriceLimitX96
+#define constant MIN_SQRT_RATIO = 0x4295128739 // 4295128739
+#define constant MAX_SQRT_RATIO = 0x1461446703485210103287273052203988822378723970342 // 1.461446703 * 10^48 approx
+
+// Standard ERC20 transfer selector needed for callback payment
+#define constant TRANSFER_SELECTOR = 0xa9059cbb
+// Standard ERC20 balanceOf selector
+#define constant BALANCE_OF_SELECTOR = 0x70a08231
+
+// Interface definition for the receiveFlashLoan function
+#define function receiveFlashLoan(address[],uint256[],uint256[],bytes) view returns (bytes32)
+
+// @notice Uniswap V3 swap callback function
+#define macro UNISWAP_V3_SWAP_CALLBACK() = takes(0) returns (0) {
+    // ... (callback logic remains unchanged) ...
+    // Location of arguments in calldata (after 4-byte selector)
+    #define cd_amount0Delta 0x04
+    #define cd_amount1Delta 0x24
+    #define cd_dataPtr      0x44
+
+    // Load deltas
+    [cd_amount0Delta] calldataload // [amount0Delta]
+    [cd_amount1Delta] calldataload // [amount1Delta, amount0Delta]
+
+    // Check if we need to pay token0 (amount0Delta < 0)
+    dup1                // [amount0Delta, amount1Delta, amount0Delta]
+    0x00 gt             // is amount0Delta > 0? [gt_result, amount1Delta, amount0Delta]
+    pay_token1 jumpi    // If amount0Delta > 0, we received token0, jump to check token1 payment
+
+    // --- Pay Token 0 ---
+    0x00 swap1 sub     // [-amount0Delta, amount1Delta] (Amount to pay)
+    [cd_dataPtr] calldataload 0x24 add calldataload // [token0_addr, amount_to_pay, amount1Delta]
+
+    // Prepare calldata for transfer(address recipient, uint256 amount)
+    0x00 mstore [TRANSFER_SELECTOR] 0x00 mstore caller() 0x04 mstore swap1 0x24 mstore // [token0_addr, amount1Delta]
+
+    // Call token0.transfer(pool, amount)
+    0x00 0x00 0x44 0x00 0x00 swap1 gas call // [success_flag, amount1Delta]
+    iszero revert_if_zero pop stop // Revert if failed, else pop and stop
+
+pay_token1:
+    swap1 pop dup1 0x00 gt callback_end jumpi // [amount1Delta]
+    // --- Pay Token 1 ---
+    0x00 swap1 sub // [-amount1Delta] (Amount to pay)
+    [cd_dataPtr] calldataload 0x24 add 0x20 add calldataload // [token1_addr, amount_to_pay]
+
+    // Prepare calldata for transfer(address recipient, uint256 amount)
+    0x00 mstore [TRANSFER_SELECTOR] 0x00 mstore caller() 0x04 mstore swap1 0x24 mstore // [token1_addr]
+
+    // Call token1.transfer(pool, amount)
+    0x00 0x00 0x44 0x00 0x00 swap1 gas call // [success_flag]
+    iszero revert_if_zero // Revert if failed
+callback_end:
+    stop
+
+revert_if_zero:
+    iszero iszero jumpi // Jump past revert if success was non-zero
+    0x00 0x00 revert
+}
+
+
+// Macro implementing the receiveFlashLoan function logic
+#define macro RECEIVE_FLASH_LOAN() = takes(0) returns (0) {
+
+    // --- Start Fresh Load Sequence ---
+    // Memory map used:
+    // 0x00: loan_amount
+    // 0x20: fee_amount
+    // 0x40: token0 address (borrowed)
+    // 0x60: pool_A address
+    // 0x80: pool_B address
+    // 0xA0: token1 address (intermediate)
+    // 0xC0: zeroForOne_swap1 flag
+    // 0xE0: sqrt_price_limit (temporary for swap1 and swap2)
+    // 0xF0: token1_balance (temporary)
+    // 0x100-0x140: Callback data buffer (token0, token1)
+    // 0x200 onwards: Swap/BalanceOf/Approve calldata buffer
+
+    // Get Loan Amount, Fee Amount, Token0 Address, UserData Offset
+    0x24 calldataload 0x20 add calldataload 0x00 mstore // loan_amount
+    0x44 calldataload 0x20 add calldataload 0x20 mstore // fee_amount
+    0x04 calldataload 0x20 add calldataload 0x40 mstore // token0
+    0x64 calldataload // [userData_offset]
+
+    // Load Pool A, Pool B, Token 1, zeroForOne_swap1 flag from UserData
+    dup1 0x24 add calldataload 0x60 mstore
+    dup1 0x44 add calldataload 0x80 mstore
+    dup1 0x64 add calldataload 0xA0 mstore
+    dup1 0x84 add calldataload 0xC0 mstore
+    pop // Clean up userData_offset
+
+    // --- Perform Swap 1 (Pool A) ---
+    // Prepare sqrtPriceLimitX96 for swap1
+    0xC0 mload iszero set_min_sqrt1 jumpi
+    [MAX_SQRT_RATIO] sqrt_limit_set1 jump
+    set_min_sqrt1: [MIN_SQRT_RATIO] 0x01 add
+    sqrt_limit_set1: 0xE0 mstore
+
+    // Prepare callback data for swap1
+    0x40 mload 0x100 mstore 0xA0 mload 0x120 mstore
+
+    // Prepare calldata for pool_A.swap(...)
+    [SWAP_SELECTOR] 0x200 mstore address() 0x204 mstore 0xC0 mload 0x224 mstore
+    0x00 mload 0x244 mstore 0xE0 mload 0x264 mstore 0xA0 0x284 mstore
+    0x40 0x2A4 mstore 0x100 mload 0x2C4 mstore 0x120 mload 0x2E4 mstore
+    #define SWAP1_CALLDATA_SIZE 0x104
+
+    // Call pool_A.swap(...)
+    0x00 0x00 [SWAP1_CALLDATA_SIZE] 0x200 0x00 0x60 mload gas call
+    iszero revert_if_swap1_failed
+
+    // --- Get Token1 Balance Received ---
+    // Prepare calldata for token1.balanceOf(address(this))
+    [BALANCE_OF_SELECTOR] 0x200 mstore address() 0x204 mstore
+    #define BALANCEOF_CALLDATA_SIZE 0x24
+
+    // Call token1.balanceOf(address(this))
+    0x20 0x200 [BALANCEOF_CALLDATA_SIZE] 0x200 0x00 0xA0 mload staticcall
+    iszero revert_if_balanceof_failed
+    0x200 mload 0xF0 mstore // Store balance in mem[0xF0]
+
+    // --- Perform Swap 2 (Pool B) ---
+    // Prepare zeroForOne_swap2 flag
+    0xC0 mload iszero // [zeroForOne_swap2]
+
+    // Prepare sqrtPriceLimitX96 for swap2
+    dup1 iszero set_min_sqrt2 jumpi
+    [MAX_SQRT_RATIO] sqrt_limit_set2 jump
+    set_min_sqrt2: [MIN_SQRT_RATIO] 0x01 add
+    sqrt_limit_set2: 0xE0 mstore // Limit in mem[0xE0]
+
+    // Prepare calldata for pool_B.swap(...)
+    [SWAP_SELECTOR] 0x200 mstore address() 0x204 mstore swap1 0x224 mstore // zeroForOne flag
+    0xF0 mload 0x244 mstore // amountSpecified (token1_balance)
+    0xE0 mload 0x264 mstore // sqrtPriceLimitX96
+    0xA0 0x284 mstore // Callback data offset
+
+    // Callback data still in mem[0x2A4...]
+    #define SWAP2_CALLDATA_SIZE 0x104
+
+    // Call pool_B.swap(...)
+    0x00 0x00 [SWAP2_CALLDATA_SIZE] 0x200 0x00 0x80 mload gas call
+    iszero revert_if_swap2_failed
+
+    // --- Approve Balancer Vault for Repayment ---
+    // Calculate total repayment amount = loan_amount + fee_amount
+    0x20 mload // fee_amount
+    0x00 mload // loan_amount
+    add         // [repayment_amount]
+
+    // Prepare calldata for token0.approve(spender, amount) -> approve(BALANCER_VAULT, repayment_amount)
+    // Use memory buffer starting at 0x200 (reuse)
+    [APPROVE_SELECTOR] 0x200 mstore  // Selector at mem[0x200..0x204]
+    [BALANCER_VAULT] 0x204 mstore    // Spender (Balancer Vault) at mem[0x204..0x224]
+    swap1                            // [repayment_amount] (get amount on top)
+    0x224 mstore                     // Amount at mem[0x224..0x244]
+
+    #define APPROVE_CALLDATA_SIZE 0x44 // 4 selector + 32 spender + 32 amount = 68 bytes = 0x44
+
+    // Call token0.approve(BALANCER_VAULT, repayment_amount)
+    0x00                      // retOffset (approve might return bool, but we check success flag)
+    0x00                      // retSize
+    [APPROVE_CALLDATA_SIZE]   // argsSize
+    0x200                     // argsOffset
+    0x00                      // value
+    0x40 mload                // token0 address (target)
+    gas                       // gas
+    call                      // [success_flag]
+
+    // Check success, revert if approve call failed
+    // Some tokens return false on failure, others revert. Checking success flag covers call failure.
+    // Some tokens might not return *anything* on success, so we might not need to check return data.
+    // Reverting if success flag is 0 is generally safest.
+    iszero revert_if_approve_failed
+
+    // --- Final Return (Success) ---
+    // Approval successful, return the required value to Balancer Vault
+    [RECEIVE_FLASH_LOAN_RETURN_VALUE]   // Push the success code onto the stack
+    0x00                                // Push memory offset 0 onto the stack
+    mstore                              // Store the success code in memory[0x00:0x20]
+    0x20                                // Push size 32 bytes onto the stack
+    0x00                                // Push memory offset 0 onto the stack
+    return                              // Return 32 bytes starting from memory[0x00]
+
+
+// Revert JUMPDESTs (placed here for clarity)
+revert_if_swap1_failed:
+    iszero iszero jumpi // Jump past revert if success was non-zero
+    0x00 0x00 revert
+
+revert_if_balanceof_failed:
+    iszero iszero jumpi // Jump past revert if success was non-zero
+    0x00 0x00 revert
+
+revert_if_swap2_failed:
+    iszero iszero jumpi // Jump past revert if success was non-zero
+    0x00 0x00 revert
+
+revert_if_approve_failed:
+    iszero iszero jumpi // Jump past revert if success was non-zero
+    0x00 0x00 revert
+}
+
+
+// Main entry point: Function dispatcher
+#define macro MAIN() = takes(0) returns (0) {
+    // Read the first 4 bytes of calldata (function selector)
+    0x00 calldataload 0xE0 shr
+
+    // Dispatch based on selector
+    dup1 [RECEIVE_FLASH_LOAN_SELECTOR] eq receive_flash_loan jumpi
+    dup1 [UNISWAP_V3_SWAP_CALLBACK_SELECTOR] eq swap_callback jumpi
+
+    // Default fallback (revert)
+    0x00 0x00 revert
+
+    receive_flash_loan:
+        // Jump to the RECEIVE_FLASH_LOAN macro execution
+        RECEIVE_FLASH_LOAN()
+
+    swap_callback:
+        // Jump to the UNISWAP_V3_SWAP_CALLBACK macro execution
+        UNISWAP_V3_SWAP_CALLBACK()
+}
