@@ -36,6 +36,8 @@ anvil --fork-url https://mainnet.optimism.io/
 ../tools/huff-neo.exe FlashExecutor.huff -r > ../build/flash_executor.bin --alt-main FLASH_LOAN_404
 ../tools/huff-neo.exe UniV4Swapper.huff -r > ../build/uni_v4_swapper.bin --alt-main UNI_V4_SWAP
 
+../tools/huff-neo.exe ArbitrageExecutor.huff -c > deploy.bin
+
 
 
 ## to build folder
