@@ -8,7 +8,11 @@ ethers = { version = "2.0", features = ["abigen", "legacy", "ws"] }
 tokio = { version = "1.37", features = ["full"] }
 hex = "0.4"
 eyre = "0.6"
+dotenv = "0.15"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
+# EXPLICITLY define the main binary target
 [[bin]]
-name = "simulate"
-path = "src/bin/simulate.rs"
+name = "ulp1_5"
+path = "bot/src/main.rs" # Point to the correct file
