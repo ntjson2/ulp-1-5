@@ -1,0 +1,4 @@
+#define macro MAIN() = takes(0) returns(0) {
+    // A minimal contract that does nothing but exists
+    stop
+}

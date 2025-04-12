@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"*.huff": "solidity"
+		},
+		"emmet.includeLanguages": {
+			"huff": "html"
+		}
+	}
+}
