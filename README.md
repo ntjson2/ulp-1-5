@@ -38,6 +38,8 @@ anvil --fork-url https://mainnet.optimism.io/
 
 ../tools/huff-neo.exe ArbitrageExecutor.huff -c > deploy.bin
 
+huffc ./contracts/ArbitrageExecutor.huff -b -o deploy.bin
+
 
 
 ## to build folder
