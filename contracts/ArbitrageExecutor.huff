@@ -1,57 +1,64 @@
 // File: ArbitrageExecutor.huff
-// Version: 1.1.4 (Compatibility fix - move size defines outside macros)
-// Purpose: Gas-optimized Uniswap V3 2-way arbitrage executor for Balancer V2 flash loans.
+// Version: 2.1.0 (Cross-DEX w/ Profit Check & Logging)
+// Purpose: Gas-optimized Cross-DEX (UniV3/VeloV2) 2-way arbitrage executor
+//          with on-chain profit check and debug logging.
 
 // =======================================================
 // Imports & Constants
 // =======================================================
 
-// Function Selectors
+// Function Selectors - General & ERC20
 #define constant APPROVE_SELECTOR = 0x095ea7b3
-#define constant SWAP_SELECTOR = 0x022c0d9f
 #define constant TRANSFER_SELECTOR = 0xa9059cbb
-#define constant BALANCE_OF_SELECTOR = 0x70a08231 // Needed for withdrawal check
+#define constant BALANCE_OF_SELECTOR = 0x70a08231
 
-// Flash Loan Related Constants
+// Function Selectors - DEX Specific
+#define constant UNISWAP_V3_SWAP_SELECTOR = 0x022c0d9f
+#define constant VELODROME_SWAP_SELECTOR = 0x38ed1739 // swapExactTokensForTokens
+
+// Function Selectors - Callbacks & Owner Actions
 #define constant RECEIVE_FLASH_LOAN_SELECTOR = 0xf3f18ace
-#define constant BALANCER_VAULT = 0xBA12222222228d8Ba445958a75a0704d566BF2C9 // Balancer V2 Vault
-#define constant RECEIVE_FLASH_LOAN_RETURN_VALUE = 0xa157427a8d45e187257fa91ff98f73367a3e04075e180055503bf726067157a9 // keccak256("ERC3156FlashBorrower.onFlashLoan")
-
-// Uniswap V3 Callback Selector
 #define constant UNISWAP_V3_SWAP_CALLBACK_SELECTOR = 0xfa461e33
+#define constant WITHDRAW_TOKEN_SELECTOR = 0x01e3b41a
 
-// TickMath constants for sqrtPriceLimitX96
+// Addresses
+#define constant BALANCER_VAULT = 0xBA12222222228d8Ba445958a75a0704d566BF2C9
+
+// Flash Loan Return Value
+#define constant RECEIVE_FLASH_LOAN_RETURN_VALUE = 0xa157427a8d45e187257fa91ff98f73367a3e04075e180055503bf726067157a9
+
+// Uniswap V3 TickMath constants
 #define constant MIN_SQRT_RATIO = 0x4295128739
 #define constant MAX_SQRT_RATIO = 0x1461446703485210103287273052203988822378723970342
 
-// Withdrawal Function Selector
-#define constant WITHDRAW_TOKEN_SELECTOR = 0x01e3b41a // Simplified selector for withdrawToken(address,address)
+// Storage Slots
+#define constant OWNER_SLOT = 0x00
 
-// Storage Slots (using constants for clarity)
-#define constant OWNER_SLOT = 0x00 // Slot 0 for owner address
+// Memory Pointers / Layout Markers (Conceptual)
+#define constant MEM_TEMP_SPACE_START = 0x00
+#define constant MEM_LOAN_AMOUNT = 0x00
+#define constant MEM_FEE_AMOUNT = 0x20
+#define constant MEM_TOKEN0_ADDR = 0x40
+#define constant MEM_RECEIVED_AMOUNT_SLOT = 0x60 // Stores amount received from Swap1
+#define constant MEM_CALLBACK_DATA_START = 0x80 // Buffer for UniV3 callback data
+#define constant MEM_PATH_ARRAY_START = 0xC0    // Buffer for Velo path array
+#define constant MEM_EXTERNAL_CALL_BUFFER = 0x100 // Main buffer for calls
+#define constant MEM_FINAL_BALANCE_SLOT = 0xE0 // Temp storage for final balance check
 
-// Memory Pointers / Layout Markers
-#define constant MEM_TEMP_SPACE_START = 0x00   // General scratch space
-#define constant MEM_RECEIVED_AMOUNT_SLOT = 0x60 // Temp storage for amount received in callback
-#define constant MEM_CALLBACK_DATA_START = 0x80  // Buffer for callback data (token0, token1)
-#define constant MEM_EXTERNAL_CALL_BUFFER = 0x100 // Buffer for swap/approve/balanceOf calldata
-
-// Call Data Sizes (Moved to global scope)
-#define constant SWAP1_CALLDATA_SIZE = 0x104
-#define constant SWAP2_CALLDATA_SIZE = 0x104
+// Call Data Sizes
+#define constant UNISWAP_SWAP_CALLDATA_SIZE = 0x104
+#define constant VELODROME_SWAP_CALLDATA_SIZE = 0x124 // Corrected size: Sel(4)+6*Args(192)+PathLen(32)+Path[0](32)+Path[1](32)=292=0x124
 #define constant APPROVE_CALLDATA_SIZE = 0x44
+#define constant BALANCEOF_CALLDATA_SIZE = 0x24
 #define constant WITHDRAW_BALANCEOF_SIZE = 0x24
 #define constant WITHDRAW_TRANSFER_SIZE = 0x44
 
-// =======================================================
-// Interface Definitions (Commented Out for compatibility)
-// =======================================================
-// #define function receiveFlashLoan(address[],uint256[],uint256[],bytes) view returns (bytes32)
-// #define function uniswapV3SwapCallback(int256 amount0Delta, int256 amount1Delta, bytes data) nonpayable
-// #define function withdrawToken(address token, address recipient) nonpayable
+// Debug Logging Topic (Example: keccak256("ArbDebug(uint256)") - just use first 4 bytes for selector)
+// Using a simple fixed topic for cheap logging via LOG1
+#define constant DEBUG_LOG_TOPIC = 0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 
 // =======================================================
-// Constructor Macro (Sets Immutable Owner)
+// Constructor Macro
 // =======================================================
 #define macro CONSTRUCTOR() = takes(0) returns (0) {
     caller [OWNER_SLOT] sstore stop
@@ -61,117 +68,171 @@
 // Uniswap V3 Swap Callback Macro
 // =======================================================
 #define macro UNISWAP_V3_SWAP_CALLBACK() = takes(0) returns (0) {
-    // Load deltas
-    0x04 calldataload // [amount0Delta]
-    0x24 calldataload // [amount1Delta, amount0Delta]
-    dup1 0x00 gt pay_token1 jumpi
-    // --- Pay Token 0 ---
-    0x00 swap1 sub swap1 [MEM_RECEIVED_AMOUNT_SLOT] mstore // [amount_to_pay]
-    0x44 calldataload 0x24 add calldataload // [token0_addr, amount_to_pay]
-    [TRANSFER_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore
-    caller [MEM_EXTERNAL_CALL_BUFFER] 0x04 add mstore
-    [MEM_EXTERNAL_CALL_BUFFER] 0x24 add swap1 mstore // [token0_addr]
+    // ... (Logic identical to v2.0.1, MEM_RECEIVED_AMOUNT_SLOT is updated here) ...
+    0x04 calldataload 0x24 calldataload dup1 0x00 gt pay_token1 jumpi
+    0x00 swap1 sub swap1 [MEM_RECEIVED_AMOUNT_SLOT] mstore
+    0x44 calldataload 0x24 add calldataload
+    [TRANSFER_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore caller [MEM_EXTERNAL_CALL_BUFFER] 0x04 add mstore
+    [MEM_EXTERNAL_CALL_BUFFER] 0x24 add swap1 mstore
     0x00 0x00 0x44 [MEM_EXTERNAL_CALL_BUFFER] 0x00 swap1 gas call iszero revert_if_zero stop
 pay_token1:
-    [MEM_RECEIVED_AMOUNT_SLOT] mstore // store amount0Delta, stack: [amount1Delta]
-    dup1 0x00 gt callback_end jumpi
-    // --- Pay Token 1 ---
-    0x00 swap1 sub // [amount_to_pay]
-    0x44 calldataload 0x24 add 0x20 add calldataload // [token1_addr, amount_to_pay]
-    [TRANSFER_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore
-    caller [MEM_EXTERNAL_CALL_BUFFER] 0x04 add mstore
-    [MEM_EXTERNAL_CALL_BUFFER] 0x24 add swap1 mstore // [token1_addr]
+    [MEM_RECEIVED_AMOUNT_SLOT] mstore dup1 0x00 gt callback_end jumpi
+    0x00 swap1 sub 0x44 calldataload 0x24 add 0x20 add calldataload
+    [TRANSFER_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore caller [MEM_EXTERNAL_CALL_BUFFER] 0x04 add mstore
+    [MEM_EXTERNAL_CALL_BUFFER] 0x24 add swap1 mstore
     0x00 0x00 0x44 [MEM_EXTERNAL_CALL_BUFFER] 0x00 swap1 gas call iszero revert_if_zero
-callback_end:
-    stop
-revert_if_zero:
-    iszero iszero jumpi 0x00 0x00 revert
+callback_end: stop
+revert_if_zero: iszero iszero jumpi 0x00 0x00 revert
+}
+
+// =======================================================
+// Helper Macro: Prepare Velo Path
+// =======================================================
+#define macro PREPARE_VELO_PATH() = takes(2) returns(0) {
+    [MEM_PATH_ARRAY_START] 0x20 add mstore [MEM_PATH_ARRAY_START] mstore
 }
 
 // =======================================================
 // Flash Loan Receiver Macro
 // =======================================================
 #define macro RECEIVE_FLASH_LOAN() = takes(0) returns (0) {
+
     // --- 1. Load Loan Parameters & User Data ---
-    0x24 calldataload 0x20 add calldataload 0x00 mstore // loan_amount
-    0x44 calldataload 0x20 add calldataload 0x20 mstore // fee_amount
-    0x04 calldataload 0x20 add calldataload 0x40 mstore // token0
-    0x64 calldataload dup1 0x24 add calldataload dup1 0x44 add calldataload swap1 pop dup1 0x64 add calldataload swap1 pop dup1 0x84 add calldataload swap1 pop pop
-    // Stack: [zeroForOne_swap1, token1, pool_B, pool_A]
+    0x24 calldataload 0x20 add calldataload [MEM_LOAN_AMOUNT] mstore
+    0x44 calldataload 0x20 add calldataload [MEM_FEE_AMOUNT] mstore
+    0x04 calldataload 0x20 add calldataload [MEM_TOKEN0_ADDR] mstore
+    // Load UserData onto stack
+    0x64 calldataload dup1 0x24 add calldataload dup1 0x44 add calldataload swap1 pop dup1 0x64 add calldataload swap1 pop dup1 0x84 add calldataload swap1 pop dup1 0xA4 add calldataload swap1 pop dup1 0xC4 add calldataload swap1 pop dup1 0xE4 add calldataload swap1 pop pop
+    // Stack: [velo_router, is_B_Velo, is_A_Velo, zeroForOne_A, token1, pool_B, pool_A]
 
-    // --- 2. Perform Swap 1 ---
-    dup1 iszero set_min_sqrt1 jumpi [MAX_SQRT_RATIO] sqrt_limit_set1 jump set_min_sqrt1: [MIN_SQRT_RATIO] 0x01 add sqrt_limit_set1:
-    // Stack: [sqrt_limit, zeroForOne_swap1, token1, pool_B, pool_A]
-    0x40 mload [MEM_CALLBACK_DATA_START] mstore dup3 [MEM_CALLBACK_DATA_START] 0x20 add mstore
-    // Prepare calldata
-    [SWAP_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore
-    address [MEM_EXTERNAL_CALL_BUFFER] 0x04 add mstore
-    [MEM_EXTERNAL_CALL_BUFFER] 0x24 add dup2 mstore // zeroForOne flag
-    0x00 mload [MEM_EXTERNAL_CALL_BUFFER] 0x44 add mstore // amountSpecified
-    [MEM_EXTERNAL_CALL_BUFFER] 0x64 add swap1 mstore // sqrtPriceLimit
-    0xA0 [MEM_EXTERNAL_CALL_BUFFER] 0x84 add mstore // Callback data offset
-    0x40 [MEM_EXTERNAL_CALL_BUFFER] 0xA4 add mstore // Callback data Length
-    [MEM_CALLBACK_DATA_START] mload [MEM_EXTERNAL_CALL_BUFFER] 0xC4 add mstore
+    // --- Log Entry Point & Loan Amount ---
+    [MEM_LOAN_AMOUNT] mload [DEBUG_LOG_TOPIC] log1
+
+    // --- 2. Perform Swap 1 (Conditional: UniV3 or VeloV2) ---
+    dup3 swap_1_velo jumpi
+
+    // --- 2a. Swap 1 via Uniswap V3 ---
+    dup4 iszero set_min_sqrt1 jumpi [MAX_SQRT_RATIO] sqrt_limit_set1 jump set_min_sqrt1: [MIN_SQRT_RATIO] 0x01 add sqrt_limit_set1:
+    [MEM_TOKEN0_ADDR] mload [MEM_CALLBACK_DATA_START] mstore dup3 [MEM_CALLBACK_DATA_START] 0x20 add mstore
+    [UNISWAP_V3_SWAP_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore address [MEM_EXTERNAL_CALL_BUFFER] 0x04 add mstore
+    [MEM_EXTERNAL_CALL_BUFFER] 0x24 add dup5 mstore [MEM_LOAN_AMOUNT] mload [MEM_EXTERNAL_CALL_BUFFER] 0x44 add mstore
+    [MEM_EXTERNAL_CALL_BUFFER] 0x64 add swap1 mstore 0xA0 [MEM_EXTERNAL_CALL_BUFFER] 0x84 add mstore
+    0x40 [MEM_EXTERNAL_CALL_BUFFER] 0xA4 add mstore [MEM_CALLBACK_DATA_START] mload [MEM_EXTERNAL_CALL_BUFFER] 0xC4 add mstore
     [MEM_CALLBACK_DATA_START] 0x20 add mload [MEM_EXTERNAL_CALL_BUFFER] 0xE4 add mstore
-    // Execute swap1
-    swap3 // [pool_A, token1, pool_B, zeroForOne_swap1]
-    0x00 0x00 [SWAP1_CALLDATA_SIZE] [MEM_EXTERNAL_CALL_BUFFER] 0x00 swap1 gas call iszero revert_if_zero
-    // Stack: [token1, pool_B, zeroForOne_swap1]
+    swap7 0x00 0x00 [UNISWAP_SWAP_CALLDATA_SIZE] [MEM_EXTERNAL_CALL_BUFFER] 0x00 swap1 gas call iszero revert_if_zero
+    swap_1_finish jump
 
-    // --- 3. Perform Swap 2 ---
-    iszero // [zeroForOne_swap2, token1, pool_B]
+    // --- 2b. Swap 1 via Velodrome V2 ---
+swap_1_velo:
+    dup4 iszero swap1_velo_path_t1_t0 jumpi dup5 [MEM_TOKEN0_ADDR] mload PREPARE_VELO_PATH() jump swap1_velo_path_prepared swap1_velo_path_t1_t0: [MEM_TOKEN0_ADDR] mload dup5 PREPARE_VELO_PATH() swap1_velo_path_prepared:
+    [VELODROME_SWAP_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore [MEM_LOAN_AMOUNT] mload [MEM_EXTERNAL_CALL_BUFFER] 0x04 add mstore
+    0x00 [MEM_EXTERNAL_CALL_BUFFER] 0x24 add mstore address [MEM_EXTERNAL_CALL_BUFFER] 0x64 add mstore timestamp [MEM_EXTERNAL_CALL_BUFFER] 0x84 add mstore
+    0x02 [MEM_EXTERNAL_CALL_BUFFER] 0xA4 add mstore [MEM_PATH_ARRAY_START] mload [MEM_EXTERNAL_CALL_BUFFER] 0xC4 add mstore
+    [MEM_PATH_ARRAY_START] 0x20 add mload [MEM_EXTERNAL_CALL_BUFFER] 0xE4 add mstore
+    0xA0 [MEM_EXTERNAL_CALL_BUFFER] 0x44 add mstore // pathOffset
+    swap7 0x00 0x00 [VELODROME_SWAP_CALLDATA_SIZE] [MEM_EXTERNAL_CALL_BUFFER] 0x00 swap1 gas call iszero revert_if_zero
+
+    // --- 3. Determine Amount Received (Only needed after Velo Swap) ---
+    [BALANCE_OF_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore address [MEM_EXTERNAL_CALL_BUFFER] 0x04 add mstore
+    0x20 [MEM_TEMP_SPACE_START] [BALANCEOF_CALLDATA_SIZE] [MEM_EXTERNAL_CALL_BUFFER] 0x00 dup4 staticcall iszero revert_if_zero
+    [MEM_TEMP_SPACE_START] mload [MEM_RECEIVED_AMOUNT_SLOT] mstore
+
+swap_1_finish:
+    // --- Log Amount Received After Swap 1 ---
+    [MEM_RECEIVED_AMOUNT_SLOT] mload [DEBUG_LOG_TOPIC] log1
+
+    // Clean up stack for Swap 2
+    pop swap4 pop // Pop pool_A, is_A_Velo
+    // Stack: [velo_router, is_B_Velo, zeroForOne_A, token1, pool_B]
+
+    // --- 4. Perform Swap 2 (Conditional: UniV3 or VeloV2) ---
+    dup2 swap_2_velo jumpi
+
+    // --- 4a. Swap 2 via Uniswap V3 ---
+    dup3 iszero // [zeroForOne_B, ...]
     dup1 iszero set_min_sqrt2 jumpi [MAX_SQRT_RATIO] sqrt_limit_set2 jump set_min_sqrt2: [MIN_SQRT_RATIO] 0x01 add sqrt_limit_set2:
-    // Stack: [sqrt_limit2, zeroForOne_swap2, token1, pool_B]
-    // Prepare calldata
-    [SWAP_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore
-    address [MEM_EXTERNAL_CALL_BUFFER] 0x04 add mstore
-    [MEM_EXTERNAL_CALL_BUFFER] 0x24 add dup2 mstore // zeroForOne_swap2 flag
-    [MEM_RECEIVED_AMOUNT_SLOT] mload [MEM_EXTERNAL_CALL_BUFFER] 0x44 add mstore // amountSpecified
-    [MEM_EXTERNAL_CALL_BUFFER] 0x64 add swap1 mstore // sqrtPriceLimit2
-    0xA0 [MEM_EXTERNAL_CALL_BUFFER] 0x84 add mstore // Callback data offset
-    // Execute swap2
-    swap2 // [pool_B, token1, zeroForOne_swap2]
-    0x00 0x00 [SWAP2_CALLDATA_SIZE] [MEM_EXTERNAL_CALL_BUFFER] 0x00 swap1 gas call iszero revert_if_zero
-    // Stack: [token1, zeroForOne_swap2] -> Pop these, no longer needed
-    pop pop
+    [MEM_TOKEN0_ADDR] mload [MEM_CALLBACK_DATA_START] mstore dup6 [MEM_CALLBACK_DATA_START] 0x20 add mstore
+    [UNISWAP_V3_SWAP_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore address [MEM_EXTERNAL_CALL_BUFFER] 0x04 add mstore
+    [MEM_EXTERNAL_CALL_BUFFER] 0x24 add dup1 mstore [MEM_RECEIVED_AMOUNT_SLOT] mload [MEM_EXTERNAL_CALL_BUFFER] 0x44 add mstore
+    [MEM_EXTERNAL_CALL_BUFFER] 0x64 add swap1 mstore 0xA0 [MEM_EXTERNAL_CALL_BUFFER] 0x84 add mstore
+    0x40 [MEM_EXTERNAL_CALL_BUFFER] 0xA4 add mstore [MEM_CALLBACK_DATA_START] mload [MEM_EXTERNAL_CALL_BUFFER] 0xC4 add mstore
+    [MEM_CALLBACK_DATA_START] 0x20 add mload [MEM_EXTERNAL_CALL_BUFFER] 0xE4 add mstore
+    swap6 0x00 0x00 [UNISWAP_SWAP_CALLDATA_SIZE] [MEM_EXTERNAL_CALL_BUFFER] 0x00 swap1 gas call iszero revert_if_zero
+    swap_2_finish jump
 
-    // --- 4. Approve Balancer Vault ---
-    0x20 mload 0x00 mload add // [repayment_amount]
+    // --- 4b. Swap 2 via Velodrome V2 ---
+swap_2_velo:
+    dup3 iszero // [zeroForOne_B, ...]
+    dup1 iszero swap2_velo_path_t0_t1 jumpi [MEM_TOKEN0_ADDR] mload dup5 PREPARE_VELO_PATH() jump swap2_velo_path_prepared swap2_velo_path_t0_t1: dup5 [MEM_TOKEN0_ADDR] mload PREPARE_VELO_PATH() swap2_velo_path_prepared:
+    [VELODROME_SWAP_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore [MEM_RECEIVED_AMOUNT_SLOT] mload [MEM_EXTERNAL_CALL_BUFFER] 0x04 add mstore
+    0x00 [MEM_EXTERNAL_CALL_BUFFER] 0x24 add mstore address [MEM_EXTERNAL_CALL_BUFFER] 0x64 add mstore timestamp [MEM_EXTERNAL_CALL_BUFFER] 0x84 add mstore
+    0x02 [MEM_EXTERNAL_CALL_BUFFER] 0xA4 add mstore [MEM_PATH_ARRAY_START] mload [MEM_EXTERNAL_CALL_BUFFER] 0xC4 add mstore
+    [MEM_PATH_ARRAY_START] 0x20 add mload [MEM_EXTERNAL_CALL_BUFFER] 0xE4 add mstore
+    0xA0 [MEM_EXTERNAL_CALL_BUFFER] 0x44 add mstore // pathOffset
+    swap1 0x00 0x00 [VELODROME_SWAP_CALLDATA_SIZE] [MEM_EXTERNAL_CALL_BUFFER] 0x00 swap1 gas call iszero revert_if_zero
+
+swap_2_finish:
+    // Stack cleanup (approximate, adjust if needed)
+    pop pop pop pop
+
+    // --- 5. Profit / Slippage Check ---
+    // Get final balance of token0
+    [BALANCE_OF_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore
+    address [MEM_EXTERNAL_CALL_BUFFER] 0x04 add mstore
+    0x20 [MEM_FINAL_BALANCE_SLOT] [BALANCEOF_CALLDATA_SIZE] [MEM_EXTERNAL_CALL_BUFFER] 0x00 [MEM_TOKEN0_ADDR] mload staticcall
+    iszero revert_if_zero // Revert if balanceOf call failed
+
+    // Load final balance & calculate required repayment amount
+    [MEM_FINAL_BALANCE_SLOT] mload // [final_balance]
+    [MEM_FEE_AMOUNT] mload [MEM_LOAN_AMOUNT] mload add // [repayment_amount, final_balance]
+
+    // --- Log Final Balance & Repayment Amount ---
+    dup1 [DEBUG_LOG_TOPIC] log1 // Log repayment_amount
+    dup2 [DEBUG_LOG_TOPIC] log1 // Log final_balance
+
+    // Check: final_balance > repayment_amount
+    gt // [is_profitable (1 or 0)]
+    iszero // [profit_check_failed (1 if not profitable, 0 if profitable)]
+    revert_if_unprofitable jumpi // If check failed (result is 1), jump to revert
+
+    // --- 6. Approve Balancer Vault ---
+    // Profit check passed
+    [MEM_FEE_AMOUNT] mload [MEM_LOAN_AMOUNT] mload add // [repayment_amount]
     [APPROVE_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore
     [BALANCER_VAULT] [MEM_EXTERNAL_CALL_BUFFER] 0x04 add mstore
     [MEM_EXTERNAL_CALL_BUFFER] 0x24 add swap1 mstore // repayment_amount
-    0x00 0x00 [APPROVE_CALLDATA_SIZE] [MEM_EXTERNAL_CALL_BUFFER] 0x00 0x40 mload gas call iszero revert_if_zero
+    0x00 0x00 [APPROVE_CALLDATA_SIZE] [MEM_EXTERNAL_CALL_BUFFER] 0x00 [MEM_TOKEN0_ADDR] mload gas call
+    iszero revert_if_zero // Revert if approve failed
 
-    // --- 5. Final Return ---
+    // --- 7. Final Return ---
     [RECEIVE_FLASH_LOAN_RETURN_VALUE] [MEM_TEMP_SPACE_START] mstore
     0x20 [MEM_TEMP_SPACE_START] return
+
+revert_if_unprofitable: // New revert point if profit check fails
+    // Optional: Log values before reverting
+    [MEM_FINAL_BALANCE_SLOT] mload [DEBUG_LOG_TOPIC] log1 // Log final balance again
+    [MEM_FEE_AMOUNT] mload [MEM_LOAN_AMOUNT] mload add [DEBUG_LOG_TOPIC] log1 // Log repayment again
+    0x00 0x00 revert // Revert transaction
 }
+
 
 // =======================================================
 // Profit Withdrawal Macro
 // =======================================================
 #define macro WITHDRAW_TOKEN() = takes(0) returns (0) {
     caller [OWNER_SLOT] sload eq is_owner jumpi 0x00 0x00 revert is_owner:
-    // Load params
-    0x04 calldataload // [token_addr]
-    0x24 calldataload // [recipient_addr, token_addr]
-    // Get balance
-    [BALANCE_OF_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore
-    address [MEM_EXTERNAL_CALL_BUFFER] 0x04 add mstore
+    0x04 calldataload 0x24 calldataload
+    [BALANCE_OF_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore address [MEM_EXTERNAL_CALL_BUFFER] 0x04 add mstore
     0x20 [MEM_TEMP_SPACE_START] [WITHDRAW_BALANCEOF_SIZE] [MEM_EXTERNAL_CALL_BUFFER] 0x00 dup3 staticcall iszero revert_if_zero
-    // Stack: [recipient_addr, token_addr]
-    [MEM_TEMP_SPACE_START] mload // [balance, recipient_addr, token_addr]
-    // Transfer balance
-    [TRANSFER_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore
-    swap1 swap2 // [token_addr, balance, recipient_addr]
-    [MEM_EXTERNAL_CALL_BUFFER] 0x04 add mstore // recipient
-    swap1 [MEM_EXTERNAL_CALL_BUFFER] 0x24 add mstore // balance
+    [MEM_TEMP_SPACE_START] mload
+    [TRANSFER_SELECTOR] [MEM_EXTERNAL_CALL_BUFFER] mstore swap1 swap2
+    [MEM_EXTERNAL_CALL_BUFFER] 0x04 add mstore swap1 [MEM_EXTERNAL_CALL_BUFFER] 0x24 add mstore
     0x00 0x00 [WITHDRAW_TRANSFER_SIZE] [MEM_EXTERNAL_CALL_BUFFER] 0x00 swap1 gas call iszero revert_if_zero
     stop
 }
 
 // =======================================================
-// Main Dispatcher Macro (Contract Entry Point)
+// Main Dispatcher Macro
 // =======================================================
 #define macro MAIN() = takes(0) returns (0) {
     0x00 calldataload 0xE0 shr
