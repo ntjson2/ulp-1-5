@@ -37,3 +37,4 @@ tools/huff.exe
 target/
 .env
 bot/.env
+.secret.env
