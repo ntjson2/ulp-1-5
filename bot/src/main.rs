@@ -2,144 +2,37 @@
 
 // --- Imports ---
 use ethers::{
-    prelude::*,
-    types::{Address, U256}, // Added Address explicitly
-    utils::{format_units}, // Keep format_units for logging
+    prelude::*, // Import common ethers items
+    types::{Address, U256}, // Specific types
+    utils::{format_units}, // Formatting helper
 };
 use eyre::Result;
-use std::{env, sync::Arc, str::FromStr};
-use dotenv::dotenv;
+use std::{env, sync::Arc, str::FromStr}; // Standard library items
 
 // --- Module Declarations ---
-// Declare the modules we've created or will create
-mod config; // Module for loading configuration
-mod utils;  // Module for utility functions (price calcs, conversions)
-// mod simulation; // Will add later
-// mod evm; // Will add later
+mod config;     // Loads configuration from .env
+mod utils;      // Contains helper functions (price calcs, conversions)
+mod simulation; // Contains swap simulation logic
+mod bindings;   // Contains all contract bindings (abigen!)
 
 // --- Use Statements ---
-// Bring items from modules into scope
-use crate::config::load_config; // Import the function to load config
-use crate::utils::*; // Import all public items from utils (helpers, trait)
-
-// --- Define Contract Bindings ---
-// These remain in main for now, or could be moved to a dedicated bindings module/lib.rs
-abigen!(
+use crate::config::load_config; // Function to load config
+use crate::utils::*;            // Utility functions and traits
+use crate::simulation::simulate_swap; // Swap simulation function
+// Import contract types from the bindings module
+use crate::bindings::{
     UniswapV3Pool,
-    "./abis/UniswapV3Pool.json",
-    event_derives(serde::Deserialize, serde::Serialize)
-);
-abigen!(
     VelodromeV2Pool,
-    "./abis/VelodromeV2Pool.json",
-    event_derives(serde::Deserialize, serde::Serialize)
-);
-abigen!(
     VelodromeRouter,
-    "./abis/VelodromeRouter.json",
-    event_derives(serde::Deserialize, serde::Serialize)
-);
-abigen!(
     BalancerVault,
-    "./abis/BalancerVault.json",
-    event_derives(serde::Deserialize, serde::Serialize)
-);
-abigen!(
     QuoterV2,
-    "./abis/QuoterV2.json",
-    event_derives(serde::Deserialize, serde::Serialize)
-);
-abigen!(
-    IERC20,
-    r#"[
-        function approve(address spender, uint256 amount) external returns (bool)
-        function balanceOf(address account) external view returns (uint256)
-        function decimals() external view returns (uint8)
-    ]"#,
-    event_derives(serde::Deserialize, serde::Serialize)
-);
-
-// --- Use statements for generated types ---
-// If bindings were moved, these would change too
-use crate::quoter_v2 as quoter_v2_bindings;
-use crate::velodrome_router as velo_router_bindings;
+    // IERC20 is also available via bindings::i_erc20 if needed directly
+};
 
 // --- Constants ---
-const ARBITRAGE_THRESHOLD_PERCENTAGE: f64 = 0.1; // Example threshold
-const FLASH_LOAN_FEE_RATE: f64 = 0.0000; // Example Balancer fee (0% usually on L2s)
-const SIMULATION_AMOUNT_WETH: f64 = 1.0; // Amount of WETH to simulate with
-
-// --- Helper Functions ---
-// MOVED to src/utils.rs
-// - ToF64Lossy trait and impl
-// - v3_price_from_sqrt function
-// - v2_price_from_reserves function
-// - f64_to_wei function
-
-// --- Simulation Helper ---
-// WILL BE MOVED to src/simulation.rs
-async fn simulate_swap(
-    dex_type: &str, // "UniV3" or "VeloV2"
-    token_in: Address,
-    token_out: Address,
-    amount_in: U256,
-    velo_router: &VelodromeRouter<Provider<Http>>,
-    quoter: &QuoterV2<Provider<Http>>,
-    is_velo_route_stable: bool,
-    uni_pool_fee: u32,
-) -> Result<U256> {
-    println!(
-        "    Simulating Swap: {} -> {} Amount: {} on {}",
-        token_in, token_out, amount_in, dex_type
-    );
-    match dex_type {
-        "UniV3" => {
-            let params = quoter_v2_bindings::QuoteExactInputSingleParams {
-                token_in,
-                token_out,
-                amount_in,
-                fee: uni_pool_fee,
-                sqrt_price_limit_x96: U256::zero(),
-            };
-            let quote_result = quoter.quote_exact_input_single(params).call().await;
-            match quote_result {
-                Ok(output) => {
-                     println!("      -> UniV3 Quoter Result: AmountOut={}", output.0);
-                     Ok(output.0)
-                },
-                Err(e) => {
-                    eprintln!("      -> UniV3 Quoter simulation failed: {}", e);
-                    Err(eyre::eyre!("UniV3 Quoter simulation failed: {}", e))
-                },
-            }
-        }
-        "VeloV2" => {
-            let routes = vec![velo_router_bindings::Route {
-                 from: token_in,
-                 to: token_out,
-                 stable: is_velo_route_stable,
-                 factory: Address::zero(), // Placeholder
-             }];
-            match velo_router.get_amounts_out(amount_in, routes).call().await {
-                Ok(amounts_out) => {
-                     if amounts_out.len() >= 2 {
-                          println!("      -> VeloV2 getAmountsOut Result: AmountOut={}", amounts_out[1]);
-                         Ok(amounts_out[1])
-                     } else {
-                         eprintln!("      -> VeloV2 getAmountsOut returned unexpected vector length: {:?}", amounts_out);
-                         Err(eyre::eyre!("VeloV2 getAmountsOut returned unexpected vector length"))
-                     }
-                },
-                Err(e) => {
-                     eprintln!("      -> VeloV2 getAmountsOut simulation failed: {}", e);
-                     Err(eyre::eyre!("VeloV2 simulation failed: {}", e))
-                 },
-            }
-        }
-        _ => Err(eyre::eyre!("Unsupported DEX type for simulation: {}", dex_type)),
-    }
-}
-
+const ARBITRAGE_THRESHOLD_PERCENTAGE: f64 = 0.1;
+const FLASH_LOAN_FEE_RATE: f64 = 0.0000;
+const SIMULATION_AMOUNT_WETH: f64 = 1.0;
 
 // --- Main Execution ---
 #[tokio::main]
@@ -148,9 +41,8 @@ async fn main() -> Result<()> {
     let config = load_config()?;
 
     // --- Setup Provider & Client ---
-    // Use config fields directly
     println!("Setting up provider & client...");
-    let provider = Provider::<Http>::try_from(config.local_rpc_url.clone())?; // Clone URL string if needed later
+    let provider = Provider::<Http>::try_from(config.local_rpc_url.clone())?;
     let provider = Arc::new(provider);
     let chain_id = provider.get_chainid().await?.as_u64();
     println!("RPC OK. Chain ID: {}", chain_id);
@@ -159,9 +51,8 @@ async fn main() -> Result<()> {
     let client = Arc::new(client);
     println!("Provider & client setup complete.");
 
-    // --- Parse Addresses ---
-    // Addresses are already parsed in the config struct
-    println!("Addresses loaded from config.");
+    // --- Use Addresses from Config ---
+    println!("Using addresses from config.");
     let uni_v3_pool_address = config.uni_v3_pool_addr;
     let velo_v2_pool_address = config.velo_v2_pool_addr;
     let weth_address = config.weth_address;
@@ -170,17 +61,16 @@ async fn main() -> Result<()> {
     let velo_router_address = config.velo_router_addr;
     let balancer_vault_address = config.balancer_vault_address;
     let quoter_v2_address = config.quoter_v2_address;
-    // Also get decimals from config
     let weth_decimals = config.weth_decimals;
     let usdc_decimals = config.usdc_decimals;
 
-
     // --- Create Contract Instances ---
+    // Use the types imported from the bindings module
     println!("Creating contract instances...");
     let uni_v3_pool = UniswapV3Pool::new(uni_v3_pool_address, provider.clone());
     let velo_v2_pool = VelodromeV2Pool::new(velo_v2_pool_address, provider.clone());
     let velo_router = VelodromeRouter::new(velo_router_address, provider.clone());
-    let balancer_vault = BalancerVault::new(balancer_vault_address, client.clone());
+    let balancer_vault = BalancerVault::new(balancer_vault_address, client.clone()); // Keep unused for now
     let quoter = QuoterV2::new(quoter_v2_address, provider.clone());
     println!("Contract instances created.");
 
@@ -212,7 +102,6 @@ async fn main() -> Result<()> {
 
     println!("\n--- Performing Single Test Run ---");
 
-    // Use f64_to_wei from the utils module
     let simulation_amount_weth_wei = f64_to_wei(SIMULATION_AMOUNT_WETH, weth_decimals as u32)?;
     println!("Simulating with {} WETH ({})", SIMULATION_AMOUNT_WETH, simulation_amount_weth_wei);
 
@@ -223,7 +112,6 @@ async fn main() -> Result<()> {
         uni_v3_pool.slot_0().call().await
             .map_err(|e| eyre::eyre!("RPC Error fetching UniV3 slot0: {}", e))
             .and_then(|slot0_data| {
-                // Use v3_price_from_sqrt from the utils module
                 let price_native = v3_price_from_sqrt(slot0_data.0, uni_decimals0, uni_decimals1)?;
                  if uni_token0 == weth_address { Ok(price_native) } else { if price_native.abs() < f64::EPSILON {Ok(0.0)} else {Ok(1.0 / price_native)} }
             })
@@ -233,7 +121,6 @@ async fn main() -> Result<()> {
          velo_v2_pool.get_reserves().call().await
             .map_err(|e| eyre::eyre!("RPC Error fetching Velo reserves: {}", e))
             .and_then(|reserves| {
-                // Use v2_price_from_reserves from the utils module
                 let price = v2_price_from_reserves(reserves.0.into(), reserves.1.into(), velo_decimals0, velo_decimals1)?;
                 Ok(if velo_t0_is_weth { price } else { if price.abs() < f64::EPSILON { 0.0 } else { 1.0 / price } })
          })
@@ -265,7 +152,7 @@ async fn main() -> Result<()> {
                     println!("    Direction: Buy {} (Low), Sell {} (High)", buy_dex, sell_dex);
 
                     // --- Accurate Simulation ---
-                    // simulate_swap function definition is still here, will be moved next
+                    // Calls the simulate_swap function from the simulation module
                     let simulation_result: Result<U256> = async {
 
                         let amount_out_intermediate_wei = simulate_swap(
@@ -273,12 +160,12 @@ async fn main() -> Result<()> {
                             token_in,
                             token_out,
                             amount_in_wei,
-                            &velo_router,
-                            &quoter,
+                            &velo_router, // Pass instance created in main
+                            &quoter,      // Pass instance created in main
                             buy_dex_stable,
                             buy_dex_fee,
                         ).await?;
-                        // println!("    Sim Swap 1 Out: {}", amount_out_intermediate_wei);
+                        // Intermediate logging is now inside simulate_swap
 
                         if amount_out_intermediate_wei.is_zero() {
                             eyre::bail!("Simulation Swap 1 resulted in zero output.");
@@ -289,12 +176,12 @@ async fn main() -> Result<()> {
                             token_out,
                             token_in,
                             amount_out_intermediate_wei,
-                            &velo_router,
-                            &quoter,
+                            &velo_router, // Pass instance created in main
+                            &quoter,      // Pass instance created in main
                             sell_dex_stable,
                             sell_dex_fee,
                          ).await?;
-                         // println!("    Sim Swap 2 Out: {}", amount_out_final_wei);
+                        // Final logging is now inside simulate_swap
 
                         Ok(amount_out_final_wei)
                     }.await;
@@ -325,7 +212,7 @@ async fn main() -> Result<()> {
                                 println!("    Simulated NET Profit: {} Wei ({:.8} WETH)", net_profit_weth_wei, format_units(net_profit_weth_wei, "ether")?);
                                 println!("    >>> Simulation SUCCESSFUL - Profit Expected <<<");
                                 // TODO: Encode userData
-                                // TODO: Estimate Gas Accurately
+                                // TODO: Estimate Gas Accurately (NEXT STEP!)
                                 // TODO: Send flash loan tx
                             } else {
                                 println!("    Simulated NET Loss/Insufficient Profit: Gross Profit {} <= Total Cost {}", gross_profit_wei, total_cost_wei);
