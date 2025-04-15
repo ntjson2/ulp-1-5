@@ -369,3 +369,121 @@ This involves trade-offs, and the "best" can be subjective or change:
 5.  **Optimize Bot:** Minimize unnecessary RPC calls. Consider techniques like checking block numbers before polling to avoid redundant reads if the block hasn't changed. Use `eth_call` efficiently. If supported by the provider and `ethers-rs`, investigate JSON-RPC batch requests for polling multiple states in fewer HTTP requests.
 
 **For your specific setup (GCP Ohio, Rust, L2 focus), a tiered approach using Alchemy as primary (due to its common use in the ecosystem and flexible CU model) and Infura/QuickNode as secondary is likely the most practical, cost-efficient, and reliable solution to start and scale.** Avoid running your own node initially due to the significant operational overhead.
+
+
+** Phase 1 (done)
+
+Okay, here is a structured handoff summary of the ULP 1.5 (Cross-DEX Arbitrage Bot) project status.
+
+```markdown
+# Project Handoff: ULP 1.5 - Cross-DEX Arbitrage System (Phase 1 Complete)
+
+## 1. Project Objective & Key Use Case
+
+**Objective:** Develop "ULP 1.5", a high-efficiency, pure arbitrage system optimized for L2 execution (Optimism focus initially, extensible to Base, Arbitrum). The system aims to capture price discrepancies between different DEXs using flash loans for capital.
+
+**Use Case:** Execute atomic 2-way cross-DEX arbitrage trades (e.g., between Uniswap V3 and Velodrome V2 pools for the same token pair like WETH/USDC) by:
+    1. Detecting a profitable price spread via off-chain polling.
+    2. Borrowing starting capital (e.g., WETH) via a Balancer V2 flash loan.
+    3. Executing Swap 1 (e.g., WETH -> USDC) on the cheaper DEX.
+    4. Executing Swap 2 (e.g., USDC -> WETH) on the more expensive DEX.
+    5. Repaying the flash loan + fee.
+    6. Retaining the net profit (excess WETH) within the execution contract.
+
+**Constraint:** Focus solely on pure arbitrage based on existing price differences. No front-running, sandwich attacks, or complex MEV beyond capturing the discovered spread.
+
+## 2. Core Logic & Algorithm Architecture
+
+The system consists of two main components:
+
+1.  **On-Chain Huff Executor (`ArbitrageExecutor.huff` v2.1.0):**
+    *   An ultra-low gas smart contract deployed to the target L2.
+    *   Acts as the recipient for Balancer V2 flash loans (`receiveFlashLoan` function).
+    *   Parses `userData` sent with the flash loan call to get parameters (pools, tokens, DEX types, router).
+    *   Conditionally executes Swap 1 on either Uniswap V3 or Velodrome V2 based on flags in `userData`.
+    *   Determines the amount received from Swap 1 (via UniV3 callback or `balanceOf` after Velo swap - *Note: v2.1.0 has logic assuming callback/balanceOf updates `MEM_RECEIVED_AMOUNT_SLOT`*).
+    *   Conditionally executes Swap 2 on the *other* specified DEX.
+    *   Performs an on-chain profit check: Verifies the final `token0` balance exceeds `loan_amount + fee_amount`. Reverts if unprofitable.
+    *   If profitable, approves the Balancer Vault to withdraw the repayment amount.
+    *   Returns the required success code to Balancer.
+    *   Includes a basic `withdrawToken` function callable only by the owner to retrieve profits.
+    *   Includes `LOG1` events for basic debugging.
+
+2.  **Off-Chain Rust Bot (`ulp1_5` binary):**
+    *   Runs continuously (currently configured for single test run).
+    *   Connects to an L2 node RPC (currently local Anvil fork via Alchemy URL in `.env`).
+    *   Loads configuration (`.env`: RPC, private key, deployed contract addresses, pool addresses, token info, router addresses).
+    *   **Polling:** Periodically fetches the state (`slot0` or `getReserves`) of configured DEX pools (currently one UniV3 WETH/USDC pool and one VeloV2 WETH/USDC pool) via direct RPC calls using `ethers-rs`.
+    *   **Price Calculation:** Calculates the current price (WETH in terms of USDC) for each polled pool using `f64` math (workaround for potential `Decimal` overflow issues).
+    *   **Arbitrage Detection:** Compares prices between the DEXs. If the absolute spread percentage exceeds a defined threshold (`ARBITRAGE_THRESHOLD_PERCENTAGE`), it flags an opportunity.
+    *   **Simulation (Placeholder):** If an opportunity is detected, it currently runs a *placeholder* simulation using the spot prices (ignoring fees/slippage) and a fixed gas estimate to calculate potential net profit. **This simulation needs significant improvement for accuracy.**
+    *   **Execution Trigger (TODO):** If the simulation *were* accurate and indicated profit, the next steps would be to encode `userData` for the Huff contract and send the `flashLoan` transaction to the Balancer Vault via the `SignerMiddleware` (`client`).
+
+## 3. Key Patterns, Structures, and Modules
+
+*   **Rust Bot:**
+    *   **Runtime:** `tokio` for async operations (polling, RPC calls).
+    *   **EVM Interaction:** `ethers-rs` crate (Provider, SignerMiddleware, LocalWallet, Address, U256, contract bindings via `abigen!`).
+    *   **Configuration:** `dotenv` crate to load variables from `.env` file.
+    *   **Error Handling:** `eyre::Result` for convenient error reporting.
+    *   **Polling:** Basic loop using `tokio::time::interval` (currently commented out for single run). Direct `contract.call().await`.
+    *   **ABIs:** JSON ABI files stored in `./abis/` directory, used by `abigen!`.
+    *   **Project Structure:** Uses a root `Cargo.toml` defining the `ulp1_5` binary pointing to `bot/src/main.rs`.
+*   **Huff Contract:**
+    *   **Entry Points:** `CONSTRUCTOR` (sets owner), `MAIN` (dispatcher).
+    *   **Functions (Macros):** `RECEIVE_FLASH_LOAN`, `UNISWAP_V3_SWAP_CALLBACK`, `WITHDRAW_TOKEN`, `PREPARE_VELO_PATH` (helper).
+    *   **Control Flow:** Function selector dispatch in `MAIN`, conditional logic using `iszero`/`gt` and `jumpi` within `RECEIVE_FLASH_LOAN` based on `userData` flags.
+    *   **State:** `OWNER_SLOT` in storage.
+    *   **Memory:** Uses memory extensively for buffers (calldata prep, callback data, Velo path) and temporary storage (received amount, final balance). Conceptual layout defined via `#define constant MEM_*`.
+    *   **External Calls:** Uses `call` opcode for DEX swaps and `approve`. Uses `staticcall` for `balanceOf`.
+    *   **Callbacks:** Implements required UniV3 callback signature. Relies on Balancer V2 Vault calling `receiveFlashLoan` (ERC3156 standard).
+    *   **Debugging:** Uses `log1` with a fixed topic for emitting values.
+*   **Testing Environment:**
+    *   `anvil` (from Foundry): Used for local mainnet forking (`--fork-url`, `--fork-block-number`).
+    *   `cast` (from Foundry): Used for contract deployment (`cast send --create`) and potential interaction/inspection.
+    *   `huffc` (Standard Python version): Used for compiling Huff code (`huffc ... -b > ...`).
+
+## 4. Important Definitions, Constants, Workflows
+
+*   **.env Variables:** `LOCAL_RPC_URL`, `LOCAL_PRIVATE_KEY`, `ARBITRAGE_EXECUTOR_ADDRESS`, `UNI_V3_POOL_ADDR`, `VELO_V2_POOL_ADDR`, `WETH_ADDRESS`, `USDC_ADDRESS`, `WETH_DECIMALS`, `USDC_DECIMALS`, `VELO_V2_ROUTER_ADDR`, `BALANCER_VAULT_ADDRESS`.
+*   **Huff Constants:** Selectors (`APPROVE_SELECTOR`, `UNISWAP_V3_SWAP_SELECTOR`, etc.), addresses (`BALANCER_VAULT`), return values, memory markers, call data sizes.
+*   **Huff `userData` Structure (for `receiveFlashLoan` v2.1.0):**
+    *   `0x00-0x20`: `pool_A_addr`
+    *   `0x20-0x40`: `pool_B_addr`
+    *   `0x40-0x60`: `token1_addr` (intermediate token)
+    *   `0x60-0x80`: `zeroForOne_A` (1 if T0->T1, 0 if T1->T0 for swap A)
+    *   `0x80-0xA0`: `is_A_Velo` (1 if VeloV2, 0 if UniV3)
+    *   `0xA0-0xC0`: `is_B_Velo` (1 if VeloV2, 0 if UniV3)
+    *   `0xC0-0xE0`: `velo_router_addr`
+*   **Current Workflow:**
+    1.  Start Anvil fork.
+    2.  Compile Huff (`huffc ... -b > ./build/deploy_v2_1_0.bin`).
+    3.  Deploy Huff contract to Anvil (`cast send --create ...`).
+    4.  Update `.env` with deployed address and other configs.
+    5.  Run Rust bot (`cargo run --bin ulp1_5`).
+    6.  Bot polls prices from configured pools on Anvil fork.
+    7.  Bot calculates spread.
+    8.  If spread > threshold, bot runs *placeholder* simulation.
+    9.  **(TODO)** Accurate simulation.
+    10. **(TODO)** If simulation profitable, encode `userData`.
+    11. **(TODO)** Send `flashLoan` transaction via Rust bot (`client`).
+    12. **(TODO)** Monitor transaction outcome.
+    13. **(TODO)** Use `withdrawToken` function on contract (via `cast` or Rust) to retrieve profits.
+
+## 5. Token-Saving Tips / Simplifications In Use
+
+*   **Huff:** Primary gas optimization technique through direct EVM opcode generation.
+*   **On-Chain Profit Check:** Prevents executing losing trades due to slippage after simulation, saving gas on reverts *within* the flash loan callback (which can still be expensive) and preventing capital loss.
+*   **Single Executor Contract:** Handles multiple DEX types via conditional logic, avoiding deployment costs/complexity of separate contracts per DEX pair.
+*   **Off-Chain Logic:** Price calculation, opportunity scanning, and complex simulation are kept off-chain in Rust to minimize on-chain gas costs.
+*   **`f64` Price Math:** Using `f64` in Rust for price calculations avoids `rust_decimal` overflow/build issues, simplifying the Rust code at the cost of some precision (acceptable for initial detection/simulation placeholders).
+*   **Direct RPC Calls:** Simplifies initial Rust development compared to setting up subgraph queries.
+
+**Next Steps Handover:**
+The immediate next step is to replace the **placeholder simulation logic** within the Rust bot (`if spread_percentage > ARBITRAGE_THRESHOLD_PERCENTAGE` block) with accurate calculations:
+1.  Implement functions to get expected output amounts for swaps on UniV3 (likely via Quoter contract call) and VeloV2 (`router.getAmountsOut` call), accounting for fees and using current pool state from the fork.
+2.  Implement gas estimation using `client.estimate_gas()` by constructing the actual `flashLoan` call data (including encoded `userData`).
+3.  Refine the net profit calculation using these accurate simulations.
+4.  Implement `userData` encoding based on the detected opportunity and direction.
+5.  Implement the sending of the flash loan transaction using `client.send_transaction`.
+```
