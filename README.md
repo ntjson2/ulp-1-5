@@ -15,7 +15,13 @@ cargo run --bin ulp1_5
 ## Fireup anvil - optimism
 anvil --fork-url https://mainnet.optimism.io/
 
+
 cast send --rpc-url http://127.0.0.1:8545 --private-key <YOUR_ANVIL_PK> --create <BYTECODE_HEX_STRING>
+
+
+cast storage 0x85149247691df622eaf1a8bd0cafd40bc45154a9 0 --rpc-url http://127.0.0.1:8545
+
+
 
 ## Compile from Huff
 Install legacy Huff:

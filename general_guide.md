@@ -274,3 +274,53 @@ Good questions! Let's clarify those points:
         *   **Simulate** a Velodrome swap (often helper libraries need the router address).
         *   **Prepare the actual transaction:** When sending the flash loan transaction, the `userData` encoded for the Huff contract will need to include the correct Velo router address so the Huff contract knows which contract to `call` for the Velodrome swap leg.
     *   **In essence:** We poll the *pools* for prices via Anvil's forked state. We use the *router* addresses later when constructing swap simulations or transactions, assuming those routers exist at those addresses in the forked state.
+
+
+Okay, let's start with **Step 1: Run Live Test (Anvil) with Manual State Manipulation**.
+
+This step requires interaction between the running bot and manual commands sent to the Anvil fork in a separate terminal. The goal is to artificially create a large price spread while the bot is running and see if it triggers the full execution path.
+
+---
+
+**Task 11: Prepare for State Manipulation Test**
+
+**Objective:** Identify the target pool, the specific storage slot to modify, get its current value, and calculate a significantly different value to create an artificial price spread. We'll target the Uniswap V3 pool's `slot0`.
+
+**Steps:**
+
+1.  **Ensure Anvil is Running:**
+    ```bash
+    anvil --fork-url $OPTIMISM_RPC_URL --chain-id 10
+    ```
+2.  **Identify UniV3 Pool Address:** From your `.env`, this is `0x85149247691df622eaf1a8bd0cafd40bc45154a9`.
+3.  **Target Storage Slot:** For Uniswap V3 pools, the core price information (`sqrtPriceX96`) is stored in **storage slot 0**.
+4.  **Get Current `slot0` Value:** Use `cast` to read the current value of storage slot 0 for the UniV3 pool on your Anvil fork.
+    ```bash
+    cast storage $UNI_V3_POOL_ADDR 0 --rpc-url http://127.0.0.1:8545
+    # Or using the address directly:
+    # cast storage 0x85149247691df622eaf1a8bd0cafd40bc45154a9 0 --rpc-url http://127.0.0.1:8545
+    ```
+    *   Copy the full 32-byte hex value returned (it will look like `0x...`). Let's call this `CURRENT_SLOT0_VALUE`.
+5.  **Interpret Current Price (Optional but helpful):** You can roughly interpret the price from this `sqrtPriceX96`. The first part of the `slot0` value is `sqrtPriceX96`. Take `CURRENT_SLOT0_VALUE`, remove the `0x` prefix, and take the first 40 hex characters (representing the 160 bits of `sqrtPriceX96`). Let's call this `CURRENT_SQRT_PRICE_X96`. You could plug this into the `v3_price_from_sqrt` function (perhaps modified slightly to take the hex string directly) to see the current price representation if desired, just to get a baseline.
+6.  **Calculate *New* `sqrtPriceX96`:** We need to create a significantly different price. Let's aim for a price ~10% higher or lower.
+    *   **Easier Method (Approximate):** Take the `CURRENT_SQRT_PRICE_X96` value (as a large number). Calculate roughly +/- 5% of this value (since sqrtPrice is proportional to the *square root* of the price, a 5% change in sqrtPrice leads to roughly a 10% change in price). Add or subtract this difference to get a `NEW_SQRT_PRICE_X96_APPROX` (as a large number). Convert this new large number back into its 160-bit hexadecimal representation (padded with leading zeros if needed to 40 hex characters).
+    *   **More Precise Method:** Use the `v3_price_from_sqrt` logic *in reverse*. Take the current price (from step 5 or from the bot's output), increase/decrease it by 10%, then calculate the `sqrtPriceX96` corresponding to that *new* price using the formula `new_sqrtPriceX96 = sqrt(new_price / price_adjustment) * 2^96`. This requires using appropriate big number math libraries. The approximate method is likely sufficient for this test.
+7.  **Construct *New* `slot0` Value:** The `slot0` storage combines `sqrtPriceX96` (160 bits), `tick` (24 bits), and other data. To minimize disruption, we'll *only* change the `sqrtPriceX96` part.
+    *   Take the `CURRENT_SLOT0_VALUE`.
+    *   Replace the first 40 hex characters (after `0x`) with your calculated `NEW_SQRT_PRICE_X96` hex value (ensure it's exactly 40 hex chars).
+    *   Keep the remaining 24 hex characters of the original `slot0` value unchanged.
+    *   This combined 64-character hex string (prefixed with `0x`) is your `NEW_SLOT0_VALUE`.
+8.  **Prepare `cast rpc` Command:** Construct the command to write the new value. It uses the `anvil_setStorageAt` RPC method.
+    ```bash
+    # Replace NEW_SLOT0_VALUE with the hex value you constructed
+    cast rpc anvil_setStorageAt --rpc-url http://127.0.0.1:8545 \
+      "0x85149247691df622eaf1a8bd0cafd40bc45154a9" \
+      "0x0" \
+      "NEW_SLOT0_VALUE"
+    ```
+    *   Arguments: `target_address`, `storage_slot_index`, `new_value`.
+
+**Expected Outcome:** You have identified the UniV3 pool address, confirmed slot 0 is the target, retrieved the current `slot0` value from Anvil, calculated a `NEW_SLOT0_VALUE` representing a significantly different price, and prepared the `cast rpc anvil_setStorageAt ...` command, ready to be executed in the next step.
+
+---
+
