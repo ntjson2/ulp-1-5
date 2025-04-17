@@ -2,14 +2,14 @@
 
 // --- Imports ---
 use ethers::{
-    // abi::{Token}, // Removed unused Token
+    // abi::{Token}, // Removed unused
     prelude::*,
     // Removed unused Bytes, TransactionReceipt
     types::{Address, Eip1559TransactionRequest, U256},
     utils::{format_units},
 };
 use eyre::Result;
-use std::{sync::Arc}; // Removed env, FromStr
+use std::{sync::Arc}; // Removed unused env, FromStr
 use tokio::time::{interval, Duration};
 use chrono::Utc;
 
@@ -20,6 +20,7 @@ mod simulation;
 mod bindings;
 mod encoding;
 mod deploy;
+mod gas;
 
 // --- Use Statements ---
 use crate::config::load_config;
@@ -31,21 +32,23 @@ use crate::bindings::{
     VelodromeRouter,
     BalancerVault,
     QuoterV2,
+    IERC20,
 };
 use crate::encoding::encode_user_data;
 use crate::deploy::deploy_contract_from_bytecode;
+use crate::gas::estimate_flash_loan_gas;
 
 // --- Constants ---
 const ARBITRAGE_THRESHOLD_PERCENTAGE: f64 = 0.1;
 const FLASH_LOAN_FEE_RATE: f64 = 0.0000;
-const SIMULATION_AMOUNT_WETH: f64 = 1.0;
+const SIMULATION_AMOUNT_WETH: f64 = 1.0; // Will be replaced by optimization logic
 const POLLING_INTERVAL_SECONDS: u64 = 5;
+const MAX_TRADE_SIZE_VS_RESERVE_PERCENT: f64 = 5.0;
 
 // --- Main Execution ---
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Removed `mut` as config doesn't need mutation after load
-    let config = load_config()?;
+    let config = load_config()?; // Removed `mut`
 
     // --- Setup Provider & Client ---
     println!("Setting up provider & client...");
@@ -53,7 +56,7 @@ async fn main() -> Result<()> {
     let chain_id = provider.get_chainid().await?.as_u64();
     println!("RPC OK. Chain ID: {}", chain_id);
     let wallet = config.local_private_key.parse::<LocalWallet>()?.with_chain_id(chain_id);
-    let client = SignerMiddleware::new(provider.clone(), wallet.clone());
+    let client = SignerMiddleware::new(provider, wallet.clone()); // Pass provider directly
     let client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>> = Arc::new(client);
     println!("Provider & client setup complete.");
 
@@ -69,7 +72,7 @@ async fn main() -> Result<()> {
         println!(">>> Executor deployed to: {:?}", arb_executor_address);
     } else {
         println!(">>> Using existing executor address from config.");
-        arb_executor_address = config.arb_executor_address.expect("ARBITRAGE_EXECUTOR_ADDRESS must be set in .env if DEPLOY_EXECUTOR is false");
+        arb_executor_address = config.arb_executor_address.expect("ARBITRAGE_EXECUTOR_ADDRESS must be set in .env if DEPLOY_EXECUTOR is not true");
         println!(">>> Using executor at: {:?}", arb_executor_address);
     }
 
@@ -90,8 +93,7 @@ async fn main() -> Result<()> {
     let uni_v3_pool = UniswapV3Pool::new(uni_v3_pool_address, client.clone());
     let velo_v2_pool = VelodromeV2Pool::new(velo_v2_pool_address, client.clone());
     let velo_router = VelodromeRouter::new(velo_router_address, client.clone());
-    // Keep variable, accept unused warning for now
-    let balancer_vault = BalancerVault::new(balancer_vault_address, client.clone());
+    let balancer_vault = BalancerVault::new(balancer_vault_address, client.clone()); // Keep instance for calldata gen
     let uni_quoter = QuoterV2::new(quoter_v2_address, client.clone());
     println!("Contract instances created.");
 
@@ -130,8 +132,7 @@ async fn main() -> Result<()> {
         println!("\n==== Polling Cycle Start ({}) ====", Utc::now());
 
         let client_clone = client.clone();
-        // Need provider for get_gas_price, get from client
-        let provider_clone = client_clone.inner();
+        // REMOVED unused provider variable: let provider = client.inner();
 
         let cycle_result = async { // Wrap cycle logic in async block
 
@@ -171,6 +172,7 @@ async fn main() -> Result<()> {
             if spread_percentage > ARBITRAGE_THRESHOLD_PERCENTAGE {
                 println!("  >>> Opportunity DETECTED!");
 
+                // --- TODO: Replace this fixed amount with optimal amount search ---
                 let amount_in_wei = f64_to_wei(SIMULATION_AMOUNT_WETH, weth_decimals as u32)?;
                 let token_in = weth_address;
                 let token_out = usdc_address;
@@ -182,19 +184,48 @@ async fn main() -> Result<()> {
                 };
                 println!("      Direction: Buy {} -> Sell {}", buy_dex, sell_dex);
 
+                // --- LIQUIDITY PRE-CHECK ---
+                println!("      Performing liquidity pre-check...");
+                let pool_a_addr = if buy_dex == "UniV3" { uni_v3_pool_address } else { velo_v2_pool_address };
+                let pool_a_token_in_contract = IERC20::new(token_in, client_clone.clone());
+                let pool_a_token_out_contract = IERC20::new(token_out, client_clone.clone());
+                let balance_in_call = pool_a_token_in_contract.balance_of(pool_a_addr);
+                let balance_out_call = pool_a_token_out_contract.balance_of(pool_a_addr);
+                let balance_in_future = balance_in_call.call();
+                let balance_out_future = balance_out_call.call();
+                let balance_check_result = async { tokio::try_join!( balance_in_future, balance_out_future ) }.await;
+                match balance_check_result {
+                    Ok((balance_in, balance_out)) => {
+                        println!("      Pool A Balances: TokenIn ({:?}): {}, TokenOut ({:?}): {}", token_in, balance_in, token_out, balance_out);
+                        let reserve_token_in = balance_in;
+                        let reserve_f64 = reserve_token_in.to_f64_lossy();
+                        if reserve_f64 < 1e-9 {
+                             println!("      ⚠️ LIQUIDITY WARNING: Pool A's relevant reserve ({}) is near zero. Skipping.", reserve_token_in);
+                             return Ok(());
+                        }
+                        let max_allowed_trade_f64 = reserve_f64 * (MAX_TRADE_SIZE_VS_RESERVE_PERCENT / 100.0);
+                        let amount_in_f64 = amount_in_wei.to_f64_lossy();
+                        if amount_in_f64 > max_allowed_trade_f64 {
+                             println!("      ⚠️ LIQUIDITY WARNING: Trade size ({:.4}%) exceeds threshold ({:.2}%) of pool A's relevant reserve ({}). Skipping.",
+                                (amount_in_f64 / reserve_f64) * 100.0, MAX_TRADE_SIZE_VS_RESERVE_PERCENT, reserve_token_in );
+                             return Ok(());
+                        } else { println!("      ✅ Liquidity sufficient."); }
+                    },
+                    Err(e) => { eprintln!("      ❌ Failed to fetch pool balances for liquidity check: {}. Continuing without check.", e); }
+                }
+                // --- End Liquidity Pre-Check ---
+
                 // --- Accurate Simulation ---
                 let simulation_result: Result<U256> = async {
                     let amount_out_intermediate_wei = simulate_swap(
                         buy_dex, token_in, token_out, amount_in_wei,
                         &velo_router, &uni_quoter, buy_dex_stable, buy_dex_fee,
                     ).await?;
-                    if amount_out_intermediate_wei.is_zero() {
-                        eyre::bail!("Simulation Swap 1 resulted in zero output.");
-                    }
+                    if amount_out_intermediate_wei.is_zero() { eyre::bail!("Simulation Swap 1 resulted in zero output."); }
                     let amount_out_final_wei = simulate_swap(
                         sell_dex, token_out, token_in, amount_out_intermediate_wei,
                         &velo_router, &uni_quoter, sell_dex_stable, sell_dex_fee,
-                        ).await?;
+                    ).await?;
                     Ok(amount_out_final_wei)
                 }.await;
 
@@ -204,25 +235,17 @@ async fn main() -> Result<()> {
                         let gross_profit_wei = final_amount.saturating_sub(amount_in_wei);
                         println!("      Sim Gross Profit: {}", format_units(gross_profit_wei, "ether")?);
 
-                        // Use provider_clone (from client) to get gas price
-                        let gas_price = provider_clone.get_gas_price().await?;
+                        let gas_price = client_clone.inner().get_gas_price().await?;
                         println!("      Current Gas Price: {} Wei", gas_price);
 
                         // --- Accurate Gas Estimation ---
-                        println!("      Preparing for gas estimation...");
-                        let receiver = arb_executor_address;
-                        let tokens = vec![token_in];
-                        let amounts = vec![amount_in_wei];
                         let zero_for_one_a: bool;
-                        let pool_a_addr: Address;
-                        let pool_b_addr: Address;
-                        let is_a_velo: bool;
-                        let is_b_velo: bool;
+                        let pool_a_addr: Address; let pool_b_addr: Address;
+                        let is_a_velo: bool; let is_b_velo: bool;
                         if buy_dex == "UniV3" {
                             pool_a_addr = uni_v3_pool_address; pool_b_addr = velo_v2_pool_address;
                             is_a_velo = false; is_b_velo = true;
-                            // Removed unnecessary parentheses
-                            zero_for_one_a = uni_token0 == weth_address;
+                            zero_for_one_a = uni_token0 == weth_address; // Parentheses removed
                         } else {
                             pool_a_addr = velo_v2_pool_address; pool_b_addr = uni_v3_pool_address;
                             is_a_velo = true; is_b_velo = false;
@@ -233,21 +256,15 @@ async fn main() -> Result<()> {
                             pool_a_addr, pool_b_addr, token1_addr, zero_for_one_a,
                             is_a_velo, is_b_velo, velo_router_address,
                         )?;
-                        println!("      Encoded User Data: {}", user_data);
 
-                        // Use balancer_vault instance created in main scope (via client_clone if needed, but type matches now)
-                        let flash_loan_calldata = BalancerVault::new(balancer_vault_address, client_clone.clone()) // Use client_clone
-                            .flash_loan(receiver, tokens.clone(), amounts.clone(), user_data)
-                            .calldata().ok_or_else(|| eyre::eyre!("Failed to get flashLoan calldata"))?;
-
-                        let tx_request = Eip1559TransactionRequest::new()
-                            .to(balancer_vault_address)
-                            .data(flash_loan_calldata);
-
-                        println!("      Estimating gas...");
-                        let estimated_gas_units = client_clone.estimate_gas(&tx_request.clone().into(), None).await
-                            .map_err(|e| eyre::eyre!("Gas estimation failed: {}", e))?;
-                        println!("      Est. Gas Units: {}", estimated_gas_units);
+                        let estimated_gas_units = estimate_flash_loan_gas(
+                            client_clone.clone(),
+                            balancer_vault_address,
+                            arb_executor_address,
+                            token_in,
+                            amount_in_wei,
+                            user_data.clone(),
+                        ).await?;
 
                         let gas_cost_wei = gas_price * estimated_gas_units;
                         println!("      Est. Gas Cost: {} ETH", format_units(gas_cost_wei, "ether")?);
@@ -265,25 +282,35 @@ async fn main() -> Result<()> {
                             println!("      >>> EXECUTION: Sending TX <<<");
 
                             // --- Send Transaction ---
-                            match client_clone.send_transaction(tx_request.clone(), None).await {
+                            let final_flash_loan_calldata = BalancerVault::new(balancer_vault_address, client_clone.clone())
+                                .flash_loan(arb_executor_address, vec![token_in], vec![amount_in_wei], user_data)
+                                .calldata().ok_or_else(|| eyre::eyre!("Failed to get final flashLoan calldata"))?;
+
+                            let final_tx_request = Eip1559TransactionRequest::new()
+                                .to(balancer_vault_address)
+                                .data(final_flash_loan_calldata);
+
+                            match client_clone.send_transaction(final_tx_request.clone(), None).await {
                                 Ok(pending_tx) => {
                                     let tx_hash = pending_tx.tx_hash();
                                     println!("      >>> TX Sent: {:?}", tx_hash);
                                     println!("          Waiting for receipt...");
-                                    match pending_tx.await {
-                                        Ok(Some(receipt)) => {
-                                            println!("          >>> TX Confirmed: Block #{} Gas Used: {}",
-                                                     receipt.block_number.unwrap_or_default(),
-                                                     receipt.gas_used.unwrap_or_default()
-                                            );
-                                            if receipt.status == Some(1.into()) {
-                                                println!("          ✅ Success on-chain!");
-                                            } else {
-                                                eprintln!("          ❌ TX Reverted On-Chain! Status: {:?}, Hash: {:?}", receipt.status, tx_hash);
-                                            }
+                                    // Wait with timeout
+                                    match tokio::time::timeout(Duration::from_secs(120), pending_tx).await {
+                                        Ok(Ok(Some(receipt))) => { // Timeout ok, pending_tx.await ok, receipt is Some
+                                             println!("          >>> TX Confirmed: Block #{} Gas Used: {}",
+                                                      receipt.block_number.unwrap_or_default(),
+                                                      receipt.gas_used.unwrap_or_default()
+                                             );
+                                             if receipt.status == Some(1.into()) {
+                                                 println!("          ✅ Success on-chain!");
+                                             } else {
+                                                 eprintln!("          ❌ TX Reverted On-Chain! Status: {:?}, Hash: {:?}", receipt.status, tx_hash);
+                                             }
                                         }
-                                        Ok(None) => eprintln!("          ⚠️ Receipt not found (dropped/replaced?). Hash: {:?}", tx_hash),
-                                        Err(e) => eprintln!("          ❌ Error waiting for receipt: {}. Hash: {:?}", e, tx_hash),
+                                        Ok(Ok(None)) => eprintln!("          ⚠️ Receipt not found (dropped/replaced?). Hash: {:?}", tx_hash), // pending_tx.await ok, receipt is None
+                                        Ok(Err(e)) => eprintln!("          ❌ Error waiting for receipt provider error: {}. Hash: {:?}", e, tx_hash), // Error from pending_tx.await itself
+                                        Err(_) => eprintln!("          ⏳ Timeout waiting for transaction receipt (120s). Hash: {:?}", tx_hash), // Timeout elapsed
                                     }
                                 }
                                 Err(e) => eprintln!("      ❌ Error Sending TX: {}", e),

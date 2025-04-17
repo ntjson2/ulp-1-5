@@ -2,8 +2,7 @@
 
 use ethers::types::Address;
 use eyre::Result;
-// Removed unused str::FromStr, path::PathBuf
-use std::env;
+use std::env; // Keep only env
 use dotenv::dotenv;
 
 #[derive(Debug, Clone)]
@@ -29,6 +28,15 @@ pub struct Config {
     // Deployment Options
     pub deploy_executor: bool,
     pub executor_bytecode_path: String,
+
+    // Optimization Options (NEW)
+    pub min_loan_amount_weth: f64,
+    pub max_loan_amount_weth: f64,
+    pub optimal_loan_search_iterations: u32,
+
+    // Simulation Options (Future)
+    // pub manipulate_uni_price: bool,
+    // pub manipulation_percentage: f64,
 }
 
 pub fn load_config() -> Result<Config> {
@@ -38,6 +46,15 @@ pub fn load_config() -> Result<Config> {
     let parse_bool_env = |var_name: &str| -> bool {
         env::var(var_name).map(|s| s.eq_ignore_ascii_case("true") || s == "1").unwrap_or(false)
     };
+    // Helper to parse f64 with default
+    let parse_f64_env = |var_name: &str, default: f64| -> f64 {
+        env::var(var_name).ok().and_then(|s| s.parse::<f64>().ok()).unwrap_or(default)
+    };
+     // Helper to parse u32 with default
+    let parse_u32_env = |var_name: &str, default: u32| -> u32 {
+        env::var(var_name).ok().and_then(|s| s.parse::<u32>().ok()).unwrap_or(default)
+    };
+
 
     let local_rpc_url = env::var("LOCAL_RPC_URL")
         .expect("❌ Environment variable LOCAL_RPC_URL must be set");
@@ -88,6 +105,11 @@ pub fn load_config() -> Result<Config> {
         panic!("❌ ARBITRAGE_EXECUTOR_ADDRESS must be set in .env if DEPLOY_EXECUTOR is not true.");
     }
 
+    // Load new optimization params
+    let min_loan_amount_weth = parse_f64_env("MIN_LOAN_AMOUNT_WETH", 0.1); // Default 0.1 WETH
+    let max_loan_amount_weth = parse_f64_env("MAX_LOAN_AMOUNT_WETH", 100.0); // Default 100 WETH
+    let optimal_loan_search_iterations = parse_u32_env("OPTIMAL_LOAN_SEARCH_ITERATIONS", 10); // Default 10 iterations
+
 
     let config = Config {
         local_rpc_url,
@@ -104,6 +126,10 @@ pub fn load_config() -> Result<Config> {
         quoter_v2_address,
         deploy_executor,
         executor_bytecode_path,
+        // Add new fields
+        min_loan_amount_weth,
+        max_loan_amount_weth,
+        optimal_loan_search_iterations,
     };
 
     println!("✅ Configuration loaded successfully.");
