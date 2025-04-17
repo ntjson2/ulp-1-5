@@ -29,14 +29,14 @@ pub async fn deploy_contract_from_bytecode(
         .wrap_err("Failed to decode hex bytecode")?;
     let deploy_bytes = Bytes::from(bytecode);
 
-    // 3. Construct ContractFactory with correct argument order
+    // 3. Construct ContractFactory
     let factory = ContractFactory::new(
-        Abi::default(), // Provide an empty ABI
-        deploy_bytes,   // Provide the deployment bytecode
-        client.clone(), // Clone the Arc for the factory
+        Abi::default(),
+        deploy_bytes,
+        client.clone(),
     );
 
-    // Prepare the deployment call with empty constructor arguments `()`
+    // Prepare the deployment call
     let deployer = factory.deploy(())
         .map_err(|e| eyre::eyre!("Failed to construct deployment call: {}", e))?;
 
@@ -45,12 +45,10 @@ pub async fn deploy_contract_from_bytecode(
     let contract_instance_future = deployer.send().await
         .wrap_err("Failed to send deployment transaction")?;
 
-    // 5. Get Address Directly (Doesn't wait for confirmation)
+    // 5. Get Address Directly
     let contract_address = contract_instance_future.address();
     println!("      ✅ Contract Deployed (Instance Received) at: {:?}", contract_address);
-    // TODO: Add optional logic here to wait for the deployment transaction receipt
-    // using contract_instance_future.deployer().tx_hash() and provider.get_transaction_receipt()
-    // if full confirmation is required before proceeding.
+    // TODO: Optionally wait for receipt here if needed
 
     Ok(contract_address)
 }
