@@ -2,36 +2,35 @@
 
 // --- Imports ---
 use ethers::{
-    prelude::{Provider, Http}, // Core ethers types
-    types::{Address, U256}, // Address and large integer types
+    // Removed unused imports
+    prelude::Middleware,
+    types::{Address, U256},
 };
-use eyre::Result; // Error handling
+use eyre::Result;
+// Removed unused Arc
 
 // --- Use statements for types from the shared bindings module ---
-// Import the contract instance types and necessary structs (like Route)
 use crate::bindings::{
-    VelodromeRouter, // The Router type itself
-    QuoterV2,        // The Quoter type itself
-    quoter_v2 as quoter_v2_bindings, // Alias for accessing Quoter structs/enums
-    velodrome_router as velo_router_bindings, // Alias for accessing Router structs/enums
+    VelodromeRouter,
+    QuoterV2,
+    quoter_v2 as quoter_v2_bindings,
+    velodrome_router as velo_router_bindings,
 };
 
 // --- Simulation Function ---
 
-/// Simulates the output amount of a swap on either Uniswap V3 or Velodrome V2
-/// by calling the appropriate on-chain view function (Quoter or Router).
+/// Simulates the output amount of a swap...
 // ... (Doc comments remain the same) ...
-pub async fn simulate_swap(
+pub async fn simulate_swap<M: Middleware>( // Generic over Middleware M
     dex_type: &str,
     token_in: Address,
     token_out: Address,
     amount_in: U256,
-    // Function now expects the types defined in src/bindings.rs
-    velo_router: &VelodromeRouter<Provider<Http>>,
-    quoter: &QuoterV2<Provider<Http>>,
+    velo_router: &VelodromeRouter<M>, // Generic over Middleware
+    quoter: &QuoterV2<M>,           // Generic over Middleware
     is_velo_route_stable: bool,
     uni_pool_fee: u32,
-) -> Result<U256> {
+) -> Result<U256> where M::Error: 'static + Send + Sync {
     println!(
         "    Simulating Swap: {} -> {} Amount: {} on {}",
         token_in, token_out, amount_in, dex_type
@@ -39,7 +38,6 @@ pub async fn simulate_swap(
 
     match dex_type {
         "UniV3" => {
-            // Use the imported bindings path for the params struct
             let params = quoter_v2_bindings::QuoteExactInputSingleParams {
                 token_in,
                 token_out,
@@ -47,7 +45,6 @@ pub async fn simulate_swap(
                 fee: uni_pool_fee,
                 sqrt_price_limit_x96: U256::zero(),
             };
-            // Call method on the QuoterV2 instance passed in
             let quote_result = quoter.quote_exact_input_single(params).call().await;
             match quote_result {
                 Ok(output) => {
@@ -55,20 +52,18 @@ pub async fn simulate_swap(
                      Ok(output.0)
                 },
                 Err(e) => {
-                    eprintln!("      -> UniV3 Quoter simulation failed: {}", e);
-                    Err(eyre::eyre!("UniV3 Quoter simulation failed: {}", e))
+                    eprintln!("      -> UniV3 Quoter simulation failed: {:?}", e);
+                    Err(eyre::eyre!("UniV3 Quoter simulation failed: {:?}", e))
                 },
             }
         }
         "VeloV2" => {
-            // Use the imported bindings path for the Route struct
             let routes = vec![velo_router_bindings::Route {
                  from: token_in,
                  to: token_out,
                  stable: is_velo_route_stable,
-                 factory: Address::zero(), // Still using placeholder factory
+                 factory: Address::zero(), // Placeholder
              }];
-            // Call method on the VelodromeRouter instance passed in
             match velo_router.get_amounts_out(amount_in, routes).call().await {
                 Ok(amounts_out) => {
                      if amounts_out.len() >= 2 {
@@ -80,8 +75,8 @@ pub async fn simulate_swap(
                      }
                 },
                 Err(e) => {
-                     eprintln!("      -> VeloV2 getAmountsOut simulation failed: {}", e);
-                     Err(eyre::eyre!("VeloV2 simulation failed: {}", e))
+                     eprintln!("      -> VeloV2 getAmountsOut simulation failed: {:?}", e);
+                     Err(eyre::eyre!("VeloV2 simulation failed: {:?}", e))
                  },
             }
         }

@@ -2,16 +2,16 @@
 
 // --- Imports ---
 use ethers::{
-    abi::{Token}, // Keep Token if used by encoding indirectly
+    // abi::{Token}, // Removed unused Token
     prelude::*,
-    // Added TransactionReceipt for handling confirmations
-    types::{Address, Bytes, Eip1559TransactionRequest, TransactionReceipt, U256},
+    // Removed unused Bytes, TransactionReceipt
+    types::{Address, Eip1559TransactionRequest, U256},
     utils::{format_units},
 };
 use eyre::Result;
 use std::{sync::Arc}; // Removed env, FromStr
-use tokio::time::{interval, Duration}; // Added for interval polling
-use chrono::Utc; // Import Utc for timestamp
+use tokio::time::{interval, Duration};
+use chrono::Utc;
 
 // --- Module Declarations ---
 mod config;
@@ -19,12 +19,13 @@ mod utils;
 mod simulation;
 mod bindings;
 mod encoding;
+mod deploy;
 
 // --- Use Statements ---
 use crate::config::load_config;
 use crate::utils::*;
 use crate::simulation::simulate_swap;
-use crate::bindings::{ // Import contract types from bindings
+use crate::bindings::{
     UniswapV3Pool,
     VelodromeV2Pool,
     VelodromeRouter,
@@ -32,38 +33,52 @@ use crate::bindings::{ // Import contract types from bindings
     QuoterV2,
 };
 use crate::encoding::encode_user_data;
+use crate::deploy::deploy_contract_from_bytecode;
 
 // --- Constants ---
-// Set back to a realistic threshold, adjust as needed based on gas/slippage
 const ARBITRAGE_THRESHOLD_PERCENTAGE: f64 = 0.1;
-const FLASH_LOAN_FEE_RATE: f64 = 0.0000; // Balancer V2 fee is 0 on L2s
-const SIMULATION_AMOUNT_WETH: f64 = 1.0; // Amount of WETH to simulate with / flash loan
-// Define polling interval
-const POLLING_INTERVAL_SECONDS: u64 = 5; // Poll every 5 seconds
+const FLASH_LOAN_FEE_RATE: f64 = 0.0000;
+const SIMULATION_AMOUNT_WETH: f64 = 1.0;
+const POLLING_INTERVAL_SECONDS: u64 = 5;
 
 // --- Main Execution ---
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Removed `mut` as config doesn't need mutation after load
     let config = load_config()?;
 
     // --- Setup Provider & Client ---
     println!("Setting up provider & client...");
     let provider = Provider::<Http>::try_from(config.local_rpc_url.clone())?;
-    let provider = Arc::new(provider);
     let chain_id = provider.get_chainid().await?.as_u64();
     println!("RPC OK. Chain ID: {}", chain_id);
     let wallet = config.local_private_key.parse::<LocalWallet>()?.with_chain_id(chain_id);
     let client = SignerMiddleware::new(provider.clone(), wallet.clone());
-    let client = Arc::new(client);
+    let client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>> = Arc::new(client);
     println!("Provider & client setup complete.");
 
-    // --- Use Addresses from Config ---
+     // --- Deploy Executor Contract (Conditional) ---
+    let arb_executor_address: Address;
+    if config.deploy_executor {
+        println!(">>> Auto-deployment enabled. Deploying executor contract...");
+        let deployed_address = deploy_contract_from_bytecode(
+            client.clone(),
+            &config.executor_bytecode_path,
+        ).await?;
+        arb_executor_address = deployed_address;
+        println!(">>> Executor deployed to: {:?}", arb_executor_address);
+    } else {
+        println!(">>> Using existing executor address from config.");
+        arb_executor_address = config.arb_executor_address.expect("ARBITRAGE_EXECUTOR_ADDRESS must be set in .env if DEPLOY_EXECUTOR is false");
+        println!(">>> Using executor at: {:?}", arb_executor_address);
+    }
+
+    // --- Use Addresses (rest are from config) ---
     println!("Using addresses from config.");
     let uni_v3_pool_address = config.uni_v3_pool_addr;
     let velo_v2_pool_address = config.velo_v2_pool_addr;
     let weth_address = config.weth_address;
     let usdc_address = config.usdc_address;
-    let arb_executor_address = config.arb_executor_address;
     let velo_router_address = config.velo_router_addr;
     let balancer_vault_address = config.balancer_vault_address;
     let quoter_v2_address = config.quoter_v2_address;
@@ -72,11 +87,12 @@ async fn main() -> Result<()> {
 
     // --- Create Contract Instances ---
     println!("Creating contract instances...");
-    let uni_v3_pool = UniswapV3Pool::new(uni_v3_pool_address, provider.clone());
-    let velo_v2_pool = VelodromeV2Pool::new(velo_v2_pool_address, provider.clone());
-    let velo_router = VelodromeRouter::new(velo_router_address, provider.clone());
+    let uni_v3_pool = UniswapV3Pool::new(uni_v3_pool_address, client.clone());
+    let velo_v2_pool = VelodromeV2Pool::new(velo_v2_pool_address, client.clone());
+    let velo_router = VelodromeRouter::new(velo_router_address, client.clone());
+    // Keep variable, accept unused warning for now
     let balancer_vault = BalancerVault::new(balancer_vault_address, client.clone());
-    let uni_quoter = QuoterV2::new(quoter_v2_address, provider.clone()); // Renamed variable used
+    let uni_quoter = QuoterV2::new(quoter_v2_address, client.clone());
     println!("Contract instances created.");
 
     // --- Determine Pool/Token Details (Fetch once initially) ---
@@ -100,8 +116,8 @@ async fn main() -> Result<()> {
      if !(uni_token0 == weth_address && uni_token1 == usdc_address) && !(uni_token0 == usdc_address && uni_token1 == weth_address) {
          eyre::bail!("Uni pool tokens ({:?}, {:?}) do not match WETH/USDC addresses in .env", uni_token0, uni_token1);
      }
-    let uni_decimals0 = weth_decimals; // Use config decimals
-    let uni_decimals1 = usdc_decimals; // Use config decimals
+    let uni_decimals0 = weth_decimals;
+    let uni_decimals1 = usdc_decimals;
     println!("Initial pool details fetched.");
 
     // --- Initialize Polling Timer ---
@@ -111,21 +127,20 @@ async fn main() -> Result<()> {
     // --- Main Polling Loop ---
     loop {
         poll_interval.tick().await;
-        println!("\n==== Polling Cycle Start ({}) ====", Utc::now()); // Add timestamp
+        println!("\n==== Polling Cycle Start ({}) ====", Utc::now());
+
+        let client_clone = client.clone();
+        // Need provider for get_gas_price, get from client
+        let provider_clone = client_clone.inner();
 
         let cycle_result = async { // Wrap cycle logic in async block
 
             // --- Fetch Prices ---
             println!("Fetching prices...");
-            // FIX E0716: Create intermediate bindings for the CallBuilder objects
             let slot0_call_builder = uni_v3_pool.slot_0();
             let reserves_call_builder = velo_v2_pool.get_reserves();
-
-            // Now create the futures from the longer-lived bindings
             let slot0_future = slot0_call_builder.call();
             let reserves_future = reserves_call_builder.call();
-
-            // Await the futures concurrently
             let (slot0_data, reserves) = tokio::try_join!(
                 slot0_future,
                 reserves_future
@@ -137,7 +152,7 @@ async fn main() -> Result<()> {
                 .map(|price_native| if uni_token0 == weth_address { price_native } else { if price_native.abs() < f64::EPSILON {0.0} else {1.0 / price_native} });
             let (velo_calc_dec0, velo_calc_dec1) = if velo_t0_is_weth { (weth_decimals, usdc_decimals) } else { (usdc_decimals, weth_decimals) };
             let p_velo_res = v2_price_from_reserves(reserves.0.into(), reserves.1.into(), velo_calc_dec0, velo_calc_dec1)
-                .map(|price| if velo_t0_is_weth { price } else { if price.abs() < f64::EPSILON { 0.0 } else { 1.0 / price } }); // Invert if needed
+                .map(|price| if velo_t0_is_weth { price } else { if price.abs() < f64::EPSILON { 0.0 } else { 1.0 / price } });
 
             let (p_uni, p_velo) = match (p_uni_res, p_velo_res) {
                 (Ok(p_u), Ok(p_v)) => (p_u, p_v),
@@ -189,7 +204,8 @@ async fn main() -> Result<()> {
                         let gross_profit_wei = final_amount.saturating_sub(amount_in_wei);
                         println!("      Sim Gross Profit: {}", format_units(gross_profit_wei, "ether")?);
 
-                        let gas_price = provider.get_gas_price().await?;
+                        // Use provider_clone (from client) to get gas price
+                        let gas_price = provider_clone.get_gas_price().await?;
                         println!("      Current Gas Price: {} Wei", gas_price);
 
                         // --- Accurate Gas Estimation ---
@@ -205,7 +221,8 @@ async fn main() -> Result<()> {
                         if buy_dex == "UniV3" {
                             pool_a_addr = uni_v3_pool_address; pool_b_addr = velo_v2_pool_address;
                             is_a_velo = false; is_b_velo = true;
-                            zero_for_one_a = (uni_token0 == weth_address);
+                            // Removed unnecessary parentheses
+                            zero_for_one_a = uni_token0 == weth_address;
                         } else {
                             pool_a_addr = velo_v2_pool_address; pool_b_addr = uni_v3_pool_address;
                             is_a_velo = true; is_b_velo = false;
@@ -218,16 +235,17 @@ async fn main() -> Result<()> {
                         )?;
                         println!("      Encoded User Data: {}", user_data);
 
-                        let flash_loan_calldata = balancer_vault.flash_loan(
-                            receiver, tokens.clone(), amounts.clone(), user_data
-                        ).calldata().ok_or_else(|| eyre::eyre!("Failed to get flashLoan calldata"))?;
+                        // Use balancer_vault instance created in main scope (via client_clone if needed, but type matches now)
+                        let flash_loan_calldata = BalancerVault::new(balancer_vault_address, client_clone.clone()) // Use client_clone
+                            .flash_loan(receiver, tokens.clone(), amounts.clone(), user_data)
+                            .calldata().ok_or_else(|| eyre::eyre!("Failed to get flashLoan calldata"))?;
 
                         let tx_request = Eip1559TransactionRequest::new()
                             .to(balancer_vault_address)
                             .data(flash_loan_calldata);
 
                         println!("      Estimating gas...");
-                        let estimated_gas_units = client.estimate_gas(&tx_request.clone().into(), None).await
+                        let estimated_gas_units = client_clone.estimate_gas(&tx_request.clone().into(), None).await
                             .map_err(|e| eyre::eyre!("Gas estimation failed: {}", e))?;
                         println!("      Est. Gas Units: {}", estimated_gas_units);
 
@@ -247,7 +265,7 @@ async fn main() -> Result<()> {
                             println!("      >>> EXECUTION: Sending TX <<<");
 
                             // --- Send Transaction ---
-                            match client.send_transaction(tx_request.clone(), None).await {
+                            match client_clone.send_transaction(tx_request.clone(), None).await {
                                 Ok(pending_tx) => {
                                     let tx_hash = pending_tx.tx_hash();
                                     println!("      >>> TX Sent: {:?}", tx_hash);
@@ -291,13 +309,8 @@ async fn main() -> Result<()> {
         // Log if the cycle encountered an error that didn't stop the loop
         if let Err(e) = cycle_result {
              eprintln!("!! Cycle Error: {} !!", e);
-             // Consider adding delay here if errors are persistent and frequent
-             // tokio::time::sleep(Duration::from_secs(30)).await;
         }
 
         println!("==== Polling Cycle End ({}) ====", Utc::now());
     } // End loop
-
-    // Loop is infinite, so this is unreachable
-    // Ok(())
 } // End main
