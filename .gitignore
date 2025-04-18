@@ -38,3 +38,5 @@ target/
 .env
 bot/.env
 .secret.env
+
+scanner_scripts/
