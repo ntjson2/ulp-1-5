@@ -45,9 +45,15 @@ pub fn load_config() -> Result<Config> {
     println!("Loading configuration from .env file...");
     dotenv().ok();
 
-    let parse_bool_env = |var_name: &str| -> bool { /* ... */ };
-    let parse_f64_env = |var_name: &str, default: f64| -> f64 { /* ... */ };
-    let parse_u32_env = |var_name: &str, default: u32| -> u32 { /* ... */ };
+    let parse_bool_env = |var_name: &str| -> bool {
+        env::var(var_name).map(|s| s.eq_ignore_ascii_case("true") || s == "1").unwrap_or(false)
+    };
+    let parse_f64_env = |var_name: &str, default: f64| -> f64 {
+        env::var(var_name).ok().and_then(|s| s.parse::<f64>().ok()).unwrap_or(default)
+    };
+    let parse_u32_env = |var_name: &str, default: u32| -> u32 {
+        env::var(var_name).ok().and_then(|s| s.parse::<u32>().ok()).unwrap_or(default)
+    };
      // Helper to parse u64 with default
     let parse_u64_env = |var_name: &str, default: u64| -> u64 {
         env::var(var_name).ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(default)

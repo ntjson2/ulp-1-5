@@ -3,21 +3,22 @@
 // --- Imports ---
 use ethers::{
     prelude::*,
-    types::{Address, BlockId, BlockNumber, Eip1559TransactionRequest, I256, U256},
-    utils::{format_units, parse_units},
+    types::{Address, BlockId, BlockNumber, Eip1559TransactionRequest, I256, U256}, // Keep U256
+    utils::{format_units, parse_units}, // Keep format_units and parse_units
 };
 use eyre::Result;
-use std::{sync::Arc, cmp::max}; // Import cmp::max for minimum gas limit
+use std::{sync::Arc, cmp::max};
 use tokio::time::{interval, Duration};
 use chrono::Utc;
 
-// --- Module Declarations & Uses --- (remain the same)
+// --- Module Declarations ---
 mod config; mod utils; mod simulation; mod bindings; mod encoding; mod deploy; mod gas;
+// --- Use Statements ---
 use crate::config::load_config; use crate::utils::*; use crate::simulation::find_optimal_loan_amount;
 use crate::bindings::{ UniswapV3Pool, VelodromeV2Pool, VelodromeRouter, BalancerVault, QuoterV2, IERC20, };
 use crate::encoding::encode_user_data; use crate::deploy::deploy_contract_from_bytecode; use crate::gas::estimate_flash_loan_gas;
 
-// --- Constants --- (remain the same)
+// --- Constants ---
 const ARBITRAGE_THRESHOLD_PERCENTAGE: f64 = 0.1; const FLASH_LOAN_FEE_RATE: f64 = 0.0000;
 const POLLING_INTERVAL_SECONDS: u64 = 5; const MAX_TRADE_SIZE_VS_RESERVE_PERCENT: f64 = 5.0;
 
@@ -25,7 +26,8 @@ const POLLING_INTERVAL_SECONDS: u64 = 5; const MAX_TRADE_SIZE_VS_RESERVE_PERCENT
 #[tokio::main]
 async fn main() -> Result<()> {
     let config = load_config()?;
-    // ... (Setup Provider/Client, Deploy, Get Addresses, Create Instances, Fetch Initial Details - remain the same) ...
+
+    // --- Setup Provider & Client ---
     println!("Setting up provider & client...");
     let provider = Provider::<Http>::try_from(config.local_rpc_url.clone())?;
     let chain_id = provider.get_chainid().await?.as_u64();
@@ -34,16 +36,41 @@ async fn main() -> Result<()> {
     let client = SignerMiddleware::new(provider, wallet.clone());
     let client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>> = Arc::new(client);
     println!("Provider & client setup complete.");
+
+     // --- Deploy Executor Contract (Conditional) ---
     let arb_executor_address: Address;
-    if config.deploy_executor { /* ... deployment ... */ } else { /* ... use config address ... */ arb_executor_address = config.arb_executor_address.expect("ARBITRAGE_EXECUTOR_ADDRESS must be set in .env if DEPLOY_EXECUTOR is false"); }
-    let uni_v3_pool_address = config.uni_v3_pool_addr; let velo_v2_pool_address = config.velo_v2_pool_addr;
-    let weth_address = config.weth_address; let usdc_address = config.usdc_address;
-    let velo_router_address = config.velo_router_addr; let balancer_vault_address = config.balancer_vault_address;
-    let quoter_v2_address = config.quoter_v2_address; let weth_decimals = config.weth_decimals; let usdc_decimals = config.usdc_decimals;
+    if config.deploy_executor {
+        println!(">>> Auto-deployment enabled. Deploying executor contract...");
+        let deployed_address = deploy_contract_from_bytecode(client.clone(), &config.executor_bytecode_path).await?;
+        arb_executor_address = deployed_address;
+        println!(">>> Executor deployed to: {:?}", arb_executor_address);
+    } else {
+        println!(">>> Using existing executor address from config.");
+        arb_executor_address = config.arb_executor_address.expect("ARBITRAGE_EXECUTOR_ADDRESS must be set in .env if DEPLOY_EXECUTOR is false");
+        println!(">>> Using executor at: {:?}", arb_executor_address);
+    }
+
+    // --- Use Addresses ---
+    println!("Using addresses from config.");
+    let uni_v3_pool_address = config.uni_v3_pool_addr;
+    let velo_v2_pool_address = config.velo_v2_pool_addr;
+    let weth_address = config.weth_address;
+    let usdc_address = config.usdc_address;
+    let velo_router_address = config.velo_router_addr;
+    let balancer_vault_address = config.balancer_vault_address;
+    let quoter_v2_address = config.quoter_v2_address;
+    let weth_decimals = config.weth_decimals;
+    let usdc_decimals = config.usdc_decimals;
+
+    // --- Create Contract Instances ---
     println!("Creating contract instances...");
-    let uni_v3_pool = UniswapV3Pool::new(uni_v3_pool_address, client.clone()); let velo_v2_pool = VelodromeV2Pool::new(velo_v2_pool_address, client.clone());
-    let velo_router = VelodromeRouter::new(velo_router_address, client.clone()); let uni_quoter = QuoterV2::new(quoter_v2_address, client.clone());
+    let uni_v3_pool = UniswapV3Pool::new(uni_v3_pool_address, client.clone());
+    let velo_v2_pool = VelodromeV2Pool::new(velo_v2_pool_address, client.clone());
+    let velo_router = VelodromeRouter::new(velo_router_address, client.clone());
+    let uni_quoter = QuoterV2::new(quoter_v2_address, client.clone());
     println!("Contract instances created.");
+
+    // --- Determine Pool/Token Details (Fetch once initially) ---
     println!("Fetching initial pool details...");
     let velo_token0 = velo_v2_pool.token_0().call().await?; let velo_token1 = velo_v2_pool.token_1().call().await?;
     let velo_is_stable = velo_v2_pool.stable().call().await?; println!("  Velo Pool Stable: {}", velo_is_stable);
@@ -51,8 +78,10 @@ async fn main() -> Result<()> {
     let uni_token0 = uni_v3_pool.token_0().call().await?; let uni_token1 = uni_v3_pool.token_1().call().await?;
     let uni_fee = uni_v3_pool.fee().call().await?; println!("  Uni Pool Fee: {}", uni_fee);
     if !(uni_token0 == weth_address && uni_token1 == usdc_address) && !(uni_token0 == usdc_address && uni_token1 == weth_address) { eyre::bail!("Uni pool tokens mismatch"); }
-    let uni_decimals0 = weth_decimals; let uni_decimals1 = usdc_decimals; println!("Initial pool details fetched.");
+    let uni_decimals0 = weth_decimals; let uni_decimals1 = usdc_decimals;
+    println!("Initial pool details fetched.");
 
+    // --- Initialize Polling Timer ---
     let mut poll_interval = interval(Duration::from_secs(POLLING_INTERVAL_SECONDS));
     println!("\n--- Starting Continuous Polling (Interval: {}s) ---", POLLING_INTERVAL_SECONDS);
 
@@ -60,6 +89,7 @@ async fn main() -> Result<()> {
     loop {
         poll_interval.tick().await;
         println!("\n==== Polling Cycle Start ({}) ====", Utc::now());
+
         let client_clone = client.clone();
         let uni_v3_pool_clone = uni_v3_pool.clone(); let velo_v2_pool_clone = velo_v2_pool.clone();
         let velo_router_clone = velo_router.clone(); let uni_quoter_clone = uni_quoter.clone();
@@ -67,6 +97,7 @@ async fn main() -> Result<()> {
         let config_clone = config.clone();
 
         let cycle_result = async {
+
             // --- Fetch Prices ---
             println!("Fetching prices...");
             let slot0_call_builder = uni_v3_pool_clone.slot_0(); let reserves_call_builder = velo_v2_pool_clone.get_reserves();
@@ -75,7 +106,7 @@ async fn main() -> Result<()> {
             println!("Prices fetched.");
 
             // --- Calculate Prices ---
-            let p_uni_res = v3_price_from_sqrt(slot0_data.0, uni_decimals0, uni_decimals1).map(|p| if uni_token0 == weth_address {p} else {1.0/p});
+            let p_uni_res = v3_price_from_sqrt(slot0_data.0, uni_decimals0, uni_decimals1).map(|p| if uni_token0 == weth_address { p } else { 1.0/p });
             let (d0, d1) = if velo_t0_is_weth {(weth_decimals, usdc_decimals)} else {(usdc_decimals, weth_decimals)};
             let p_velo_res = v2_price_from_reserves(reserves.0.into(), reserves.1.into(), d0, d1).map(|p| if velo_t0_is_weth {p} else {1.0/p});
             let (p_uni, p_velo) = match (p_uni_res, p_velo_res) { (Ok(u), Ok(v)) => (u, v), (Err(e), _) => return Err(e.wrap_err("Uni price error")), (_, Err(e)) => return Err(e.wrap_err("Velo price error")), };
@@ -98,64 +129,72 @@ async fn main() -> Result<()> {
                 let token1_addr = token_out;
 
                 // --- LIQUIDITY PRE-CHECK ---
-                // ... (liquidity check remains the same - if it passes, continue) ...
-                 let min_check_amount = f64_to_wei(config_clone.min_loan_amount_weth, weth_decimals as u32)?;
-                 println!("      Performing liquidity pre-check (based on min loan {:.4} WETH)...", config_clone.min_loan_amount_weth);
-                 let pool_a_token_in_contract = IERC20::new(token_in, client_clone.clone());
-                 let balance_in_call = pool_a_token_in_contract.balance_of(pool_a_addr);
-                 let balance_in_future = balance_in_call.call();
-                 match balance_in_future.await {
-                     Ok(balance_in) => { /* ... check logic ... */ if balance_in.is_zero() || f64_to_wei(config_clone.min_loan_amount_weth, weth_decimals as u32)? > balance_in * config_clone.gas_limit_buffer_percentage / 100 { /* skip */ return Ok(()); } else { println!("      ✅ Initial liquidity sufficient."); } }, // Simplified check condition for brevity
-                     Err(e) => { eprintln!("      ❌ Failed to fetch pool balance for liquidity check: {}. Continuing without check.", e); }
-                 }
-                 // --- End Liquidity Pre-Check ---
-
+                let min_check_amount = f64_to_wei(config_clone.min_loan_amount_weth, weth_decimals as u32)?;
+                println!("      Performing liquidity pre-check (based on min loan {:.4} WETH)...", config_clone.min_loan_amount_weth);
+                let pool_a_token_in_contract = IERC20::new(token_in, client_clone.clone());
+                let balance_in_call = pool_a_token_in_contract.balance_of(pool_a_addr); let balance_in_future = balance_in_call.call();
+                match balance_in_future.await {
+                    Ok(balance_in) => {
+                        let reserve_token_in = balance_in; let reserve_f64 = reserve_token_in.to_f64_lossy();
+                        if reserve_f64 < 1e-9 { println!("      ⚠️ LIQUIDITY WARNING: Pool A reserve near zero. Skipping."); return Ok(()); }
+                        let max_allowed_trade_f64 = reserve_f64 * (MAX_TRADE_SIZE_VS_RESERVE_PERCENT / 100.0);
+                        let check_amount_f64 = min_check_amount.to_f64_lossy();
+                        if check_amount_f64 > max_allowed_trade_f64 { println!("      ⚠️ LIQUIDITY WARNING: Min loan amount exceeds threshold. Skipping."); return Ok(()); }
+                        else { println!("      ✅ Initial liquidity sufficient."); }
+                    },
+                    Err(e) => { eprintln!("      ❌ Failed to fetch pool balance for liquidity check: {}. Continuing without check.", e); }
+                } // --- End Liquidity Pre-Check ---
 
                 // --- Find Optimal Loan Amount ---
-                let optimal_result = find_optimal_loan_amount( client_clone.clone(), config_clone.min_loan_amount_weth, config_clone.max_loan_amount_weth, config_clone.optimal_loan_search_iterations,
-                    token_in, token_out, weth_decimals, FLASH_LOAN_FEE_RATE, buy_dex, sell_dex, buy_dex_stable, sell_dex_stable, buy_dex_fee, sell_dex_fee,
-                    &velo_router_clone, &uni_quoter_clone, arb_executor_addr_clone, balancer_vault_addr_clone, pool_a_addr, pool_b_addr, zero_for_one_a, is_a_velo,
-                    is_b_velo, velo_router_address, ).await?;
+                let optimal_result = find_optimal_loan_amount(
+                    client_clone.clone(), config_clone.min_loan_amount_weth, config_clone.max_loan_amount_weth,
+                    config_clone.optimal_loan_search_iterations, token_in, token_out, weth_decimals,
+                    FLASH_LOAN_FEE_RATE, buy_dex, sell_dex, buy_dex_stable, sell_dex_stable,
+                    buy_dex_fee, sell_dex_fee, &velo_router_clone, &uni_quoter_clone, arb_executor_addr_clone,
+                    balancer_vault_addr_clone, pool_a_addr, pool_b_addr, zero_for_one_a, is_a_velo,
+                    is_b_velo, velo_router_address,
+                ).await?;
 
                 // --- Process Optimization Result & Execute ---
                 if let Some((optimal_amount_wei, max_profit_wei)) = optimal_result {
-                    if max_profit_wei <= I256::zero() { println!("      Optimal search found no profitable amount. Aborting."); return Ok(()); }
+                    if max_profit_wei <= I256::zero() { println!("      Optimal search found no profitable amount. Aborting execution."); return Ok(()); }
                     println!("      Optimal Loan Amount Found: {} WETH", format_units(optimal_amount_wei, "ether")?);
                     println!("      Estimated Max Net Profit: {} WETH", format_units(max_profit_wei.into_raw(), "ether")?);
 
                     // --- FINAL Gas Estimation & EIP-1559 Setup ---
                     println!("      Setting up EIP-1559 fees and final gas estimate...");
                     let base_fee = match client_clone.inner().get_block(BlockId::Number(BlockNumber::Latest)).await? {
-                        Some(block) => block.base_fee_per_gas.ok_or_else(|| eyre::eyre!("Latest block missing base_fee_per_gas"))?,
-                        None => eyre::bail!("Failed to get latest block for base fee"),
+                         Some(block) => block.base_fee_per_gas.ok_or_else(|| eyre::eyre!("Latest block missing base_fee_per_gas"))?,
+                         None => eyre::bail!("Failed to get latest block for base fee"),
                     };
-                    let max_priority_fee_wei = parse_units(config_clone.max_priority_fee_per_gas_gwei, "gwei")?.into(); // Simplified conversion
+                    // FIX: Add explicit U256 annotation here
+                    let max_priority_fee_wei: U256 = parse_units(config_clone.max_priority_fee_per_gas_gwei, "gwei")
+                        .map_err(|e| eyre::eyre!("Failed to parse max_priority_fee_gwei: {}", e))? // Use map_err
+                        .into(); // Use into() which infers U256 from annotation
                     let max_fee_wei = (base_fee * 2) + max_priority_fee_wei;
                     println!("      Base Fee: {}, Priority Fee: {}, Max Fee: {}", base_fee, max_priority_fee_wei, max_fee_wei);
 
+                    // Estimate gas for the optimal amount
                     let final_user_data = encode_user_data( pool_a_addr, pool_b_addr, token1_addr, zero_for_one_a, is_a_velo, is_b_velo, velo_router_address )?;
                     let estimated_gas_units = estimate_flash_loan_gas( client_clone.clone(), balancer_vault_address, arb_executor_address, token_in, optimal_amount_wei, final_user_data.clone() ).await?;
 
                     // Calculate Buffered Gas Limit
                     let gas_limit_buffer_mult = U256::from(100 + config_clone.gas_limit_buffer_percentage);
-                    let gas_limit_buffered = estimated_gas_units * gas_limit_buffer_mult / 100;
-                    // Apply minimum gas limit
-                    let final_gas_limit = max(gas_limit_buffered, U256::from(config_clone.min_flashloan_gas_limit));
+                    let gas_limit_buffered = estimated_gas_units.saturating_mul(gas_limit_buffer_mult).checked_div(U256::from(100)).unwrap_or(estimated_gas_units);
+                    let min_limit = U256::from(config_clone.min_flashloan_gas_limit);
+                    let final_gas_limit = max(gas_limit_buffered, min_limit);
                     println!("      Est. Gas Units: {}, Buffered Limit: {}", estimated_gas_units, final_gas_limit);
-
 
                     // Calculate estimated cost using EIP-1559 approach for pre-check
                     let estimated_cost_per_gas = base_fee + max_priority_fee_wei;
-                    // Use estimated_gas_units for cost check, not buffered limit
                     let final_gas_cost_wei = estimated_cost_per_gas * estimated_gas_units;
                     println!("      Final Est. Gas Cost (EIP-1559): {} ETH", format_units(final_gas_cost_wei, "ether")?);
 
-                    let fee_numerator = U256::from((FLASH_LOAN_FEE_RATE * 10000.0) as u128);
-                    let fee_denominator = U256::from(10000);
+                    let fee_numerator = U256::from((FLASH_LOAN_FEE_RATE * 10000.0) as u128); let fee_denominator = U256::from(10000);
                     let final_flash_loan_fee_wei = optimal_amount_wei * fee_numerator / fee_denominator;
                     let final_total_cost_wei = final_gas_cost_wei + final_flash_loan_fee_wei;
 
-                    // Final check using EIP-1559 estimated cost
+                    // Final check
                     if max_profit_wei > I256::from_raw(final_total_cost_wei) {
                         println!("      >>> Final Check Passed. EXECUTION: Sending TX <<<");
 
@@ -163,22 +202,29 @@ async fn main() -> Result<()> {
                         let final_flash_loan_calldata = BalancerVault::new(balancer_vault_address, client_clone.clone())
                             .flash_loan(arb_executor_address, vec![token_in], vec![optimal_amount_wei], final_user_data)
                             .calldata().ok_or_else(|| eyre::eyre!("Failed to get final flashLoan calldata"))?;
-
-                        // Build EIP-1559 Transaction Request with Gas Limit
                         let final_tx_request = Eip1559TransactionRequest::new()
-                            .to(balancer_vault_address)
-                            .data(final_flash_loan_calldata)
+                            .to(balancer_vault_address).data(final_flash_loan_calldata)
                             .max_priority_fee_per_gas(max_priority_fee_wei)
                             .max_fee_per_gas(max_fee_wei)
-                            .gas(final_gas_limit); // Set explicit gas limit
+                            .gas(final_gas_limit);
 
                         match client_clone.send_transaction(final_tx_request.clone(), None).await {
-                            Ok(pending_tx) => { /* ... (receipt handling remains the same) ... */ }
+                            Ok(pending_tx) => {
+                                let tx_hash = pending_tx.tx_hash();
+                                println!("      >>> TX Sent: {:?}", tx_hash);
+                                println!("          Waiting for receipt...");
+                                match tokio::time::timeout(Duration::from_secs(120), pending_tx).await {
+                                    Ok(Ok(Some(receipt))) => { /* ... print success/revert ... */ }
+                                    Ok(Ok(None)) => { /* ... print dropped ... */ }
+                                    Ok(Err(e)) => { /* ... print provider error ... */ }
+                                    Err(_) => { /* ... print timeout ... */ }
+                                }
+                            }
                             Err(e) => eprintln!("      ❌ Error Sending TX: {}", e),
-                        }
+                        } // End send_transaction match
 
-                    } else { /* ... (Final Check FAILED log) ... */ }
-                } else { /* ... (No profitable amount found log) ... */ }
+                    } else { println!("      >>> Final Check FAILED: Re-estimated cost {} exceeds max profit {}. Aborting Execution <<<", format_units(final_total_cost_wei, "ether")?, format_units(max_profit_wei.into_raw(), "ether")? ); }
+                } else { println!("      No profitable loan amount found by search. Aborting Execution."); }
 
             } else { println!("  Spread below threshold."); } // End if spread > threshold
 
