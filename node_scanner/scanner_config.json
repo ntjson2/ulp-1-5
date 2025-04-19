@@ -16,18 +16,11 @@
         },
         "velodrome_v2": {
           "displayName": "Velodrome V2",
-          "subgraphId": "0x96105e05e0060956087528b7efe719d104b07294",
+          "subgraphId": "BsBDqDf6rJJyxKACZrCHAa8Gaf384cmL2hxfLaDuB8XM",
           "useApiKey": true,
-          "poolFieldName": "pools",
-          "query": "query GetPools($pageSize: Int!, $lastId: ID!) {\n  pools(first: $pageSize, orderBy: id, orderDirection: asc, where: { id_gt: $lastId }) {\n    id\n    token0 { id }\n    token1 { id }\n  }\n}"
-        },
-        "aerodrome": {
-          "displayName": "Aerodrome",
-          "subgraphId": "0xcdafc7d7c71f0e2139a9176c516c14aac71498a6",
-          "useApiKey": true,
-          "poolFieldName": "pools",
-          "query": "query GetPools($pageSize: Int!, $lastId: ID!) {\n  pools(first: $pageSize, orderBy: id, orderDirection: asc, where: { id_gt: $lastId }) {\n    id\n    token0 { id }\n    token1 { id }\n  }\n}"
-        }
+          "poolFieldName": "liquidityPools",
+          "query": "query GetPools($pageSize: Int!, $lastId: ID!) {\n  liquidityPools(first: $pageSize, orderBy: id, orderDirection: asc, where: { id_gt: $lastId }) {\n    id\n    inputTokens { id }\n  }\n}"
+        }      
       }
     }
   }
