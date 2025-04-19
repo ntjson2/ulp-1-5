@@ -39,4 +39,3 @@ target/
 bot/.env
 .secret.env
 
-scanner_scripts/

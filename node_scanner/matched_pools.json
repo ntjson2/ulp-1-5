@@ -1,1 +1,13 @@
-[]
+[
+    {
+      "name": "Uniswap V3 Optimism",
+      "network": "optimism",
+      "query_url": "https://api.thegraph.com/subgraphs/name/ianlapham/uniswap-v3-optimism"
+    },
+    {
+      "name": "Velodrome V2 Optimism",
+      "network": "optimism",
+      "query_url": "https://api.thegraph.com/subgraphs/name/velodrome-finance/velodrome-v2"
+    }
+  ]
+  
