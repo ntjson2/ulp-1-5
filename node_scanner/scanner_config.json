@@ -18,9 +18,16 @@
           "displayName": "Velodrome V2",
           "subgraphId": "BsBDqDf6rJJyxKACZrCHAa8Gaf384cmL2hxfLaDuB8XM",
           "useApiKey": true,
-          "poolFieldName": "liquidityPools",
-          "query": "query GetPools($pageSize: Int!, $lastId: ID!) {\n  liquidityPools(first: $pageSize, orderBy: id, orderDirection: asc, where: { id_gt: $lastId }) {\n    id\n    inputTokens { id }\n  }\n}"
-        }      
+          "poolFieldName": "pools",
+          "query": "query GetPools($pageSize: Int!, $lastId: ID!) {\n  pools(first: $pageSize, orderBy: id, orderDirection: asc, where: { id_gt: $lastId }) {\n    id\n    token0 { id }\n    token1 { id }\n  }\n}"
+        },
+        "aerodrome": {
+          "displayName": "Aerodrome",
+          "subgraphId": "QmVJaMkE238uK4YDCBGRcSgka3Ki9jJAFVUFKoDFEx1N51",
+          "useApiKey": true,
+          "poolFieldName": "pools",
+          "query": "query GetPools($pageSize: Int!, $lastId: ID!) {\n  pools(first: $pageSize, orderBy: id, orderDirection: asc, where: { id_gt: $lastId }) {\n    id\n    token0 { id }\n    token1 { id }\n  }\n}"
+        }
       }
     }
   }

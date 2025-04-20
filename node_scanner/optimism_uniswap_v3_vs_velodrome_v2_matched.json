@@ -1,0 +1,136 @@
+[
+  {
+    "tokenA": "0x4200000000000000000000000000000000000006",
+    "tokenB": "0xda10009cbd5d07dd0cecc66161fc93d7c9000da1",
+    "uniswap_v3_pools": [
+      "0x03af20bdaaffb4cc0a521796a223f7d85e2aac31",
+      "0x1a172713bdf4b9c846028e43081e73ca90a399dd"
+    ],
+    "velodrome_v2_pools": [
+      "0x1d72b49f81832ef8155d8dedfce9cd122367e3b3"
+    ]
+  },
+  {
+    "tokenA": "0x1f32b1c2345538c0c6f582fcb022739c4a194ebb",
+    "tokenB": "0x4200000000000000000000000000000000000006",
+    "uniswap_v3_pools": [
+      "0x04f6c85a1b00f6d9b75f91fd23835974cc07e65c"
+    ],
+    "velodrome_v2_pools": [
+      "0xbf30ff33cf9c6b0c48702ff17891293b002dfea4"
+    ]
+  },
+  {
+    "tokenA": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+    "tokenB": "0x8c6f28f2f1a3c87f0f938b96d27520d9751ec8d9",
+    "uniswap_v3_pools": [
+      "0x06f6928553a2952befe48dbe344cfbc663b80870"
+    ],
+    "velodrome_v2_pools": [
+      "0x3c01ec09d15d5450fc702dc4353b17cd2978d8a5"
+    ]
+  },
+  {
+    "tokenA": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+    "tokenB": "0xdc6ff44d5d932cbd77b52e5612ba0529dc6226f1",
+    "uniswap_v3_pools": [
+      "0x08159908698d5a73476da7dccad79614f68beec2"
+    ],
+    "velodrome_v2_pools": [
+      "0x4e5541815227e3272c405886149f45d2f437c7ff",
+      "0x7f40d48816711e31b71263f43a350bafa3d7a31a"
+    ]
+  },
+  {
+    "tokenA": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+    "tokenB": "0xeb466342c4d449bc9f53a865d5cb90586f405215",
+    "uniswap_v3_pools": [
+      "0x0d165f5bcc9cbb9cf75cef8b09cc77b1749a2a33"
+    ],
+    "velodrome_v2_pools": [
+      "0xfa587a571e0c3ded248599aa2f46917af600736f"
+    ]
+  },
+  {
+    "tokenA": "0x4200000000000000000000000000000000000006",
+    "tokenB": "0x9560e827af36c94d2ac33a39bce1fe78631088db",
+    "uniswap_v3_pools": [
+      "0x0fb07e6d6e1f52c839608e1436d2ea810cf07257",
+      "0x141c3264642264976baa2f41b3bdead67d6690c1"
+    ],
+    "velodrome_v2_pools": [
+      "0x39ed27d101aa4b7ce1cb4293b877954b8b5e14e5",
+      "0xeb32167e8b9f119d2eb4b8b4c8978bdbd8b6b842"
+    ]
+  },
+  {
+    "tokenA": "0x1f32b1c2345538c0c6f582fcb022739c4a194ebb",
+    "tokenB": "0x2416092f143378750bb29b79ed961ab195cceea5",
+    "uniswap_v3_pools": [
+      "0x139168b43218ec132528e3264b9973b4adc16b0b"
+    ],
+    "velodrome_v2_pools": [
+      "0xb71ac980569540ce38195b38369204ff555c80be"
+    ]
+  },
+  {
+    "tokenA": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+    "tokenB": "0x2218a117083f5b482b0bb821d27056ba9c04b1d3",
+    "uniswap_v3_pools": [
+      "0x15242d52ec61d50ee01925e63b9c45f57c7893e3"
+    ],
+    "velodrome_v2_pools": [
+      "0x131525f3fa23d65dc2b1eb8b6483a28c43b06916"
+    ]
+  },
+  {
+    "tokenA": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+    "tokenB": "0x9560e827af36c94d2ac33a39bce1fe78631088db",
+    "uniswap_v3_pools": [
+      "0x1529e6ac4819fd7f4fa11822b2d3d0ef870884df"
+    ],
+    "velodrome_v2_pools": [
+      "0x7cfc2da3ba598ef4de692905fedca32565ab836e"
+    ]
+  },
+  {
+    "tokenA": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+    "tokenB": "0x4200000000000000000000000000000000000006",
+    "uniswap_v3_pools": [
+      "0x1fb3cf6e48f1e7b10213e7b6d87d4c073c7fdb7b"
+    ],
+    "velodrome_v2_pools": [
+      "0x478946bcd4a5a22b316470f5486fafb928c0ba25"
+    ]
+  },
+  {
+    "tokenA": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+    "tokenB": "0x73cb180bf0521828d8849bc8cf2b920918e23032",
+    "uniswap_v3_pools": [
+      "0x2180e7423e6c495e8f5c8de71f22b94933ef3f98"
+    ],
+    "velodrome_v2_pools": [
+      "0xfd5f39c74e63f1dace336350afdf11e85bbd56f4"
+    ]
+  },
+  {
+    "tokenA": "0x12ff4a259e14d4dcd239c447d23c9b00f7781d8f",
+    "tokenB": "0x4200000000000000000000000000000000000006",
+    "uniswap_v3_pools": [
+      "0x242f80a5ac004323bac34ee91c3a85ae51b0ef1c"
+    ],
+    "velodrome_v2_pools": [
+      "0xdc6412feaa5568a0ca479e96d5e460306a42be6b"
+    ]
+  },
+  {
+    "tokenA": "0x4200000000000000000000000000000000000006",
+    "tokenB": "0xc40f949f8a4e094d1b49a23ea9241d289b7b2819",
+    "uniswap_v3_pools": [
+      "0x2432bb97dcbf9bd78bf130f181901d6290828524"
+    ],
+    "velodrome_v2_pools": [
+      "0xbafb44286c5ecafb1f26a6649e15c49fc1c49882"
+    ]
+  }
+]

@@ -168,6 +168,8 @@ async function getAllPools(chainName, protocolName) {
                  console.error("   Hint: The subgraph indexers are unhealthy or timing out. Try again later or find an alternative subgraph deployment.");
             } else if (errorMessage.includes('subgraph not found')) { // Handle not found errors
                  console.error(`   Hint: Subgraph ID '${protocolConfig.subgraphId}' not found on the Gateway. Double-check the ID in the config and on The Graph Explorer.`);
+            } else if (errorMessage.includes('Cannot query field')) { // Handle specific field errors
+                console.error("   Hint: The fields requested in the query do not exist on the specified entity (e.g., 'pairs', 'pools'). Verify the query and poolFieldName in the config against the subgraph schema.");
             }
             break; // Stop trying on error
         }
@@ -227,8 +229,8 @@ async function getAllPools(chainName, protocolName) {
     // Define which cross-protocol comparisons to run on which chains
     // Updated comparisons list
     const comparisonsToRun = [
-        { chain: 'optimism', protoA: 'uniswap_v3', protoB: 'velodrome_v2' }, // Using new Velo V2 subgraph
-        { chain: 'optimism', protoA: 'uniswap_v3', protoB: 'aerodrome' }    // Added Uni V3 vs Aerodrome
+        { chain: 'optimism', protoA: 'uniswap_v3', protoB: 'velodrome_v2' }, // Using BsBDqD... ID for Velo V2
+        { chain: 'optimism', protoA: 'uniswap_v3', protoB: 'aerodrome' }    // Using QmVJa... ID for Aerodrome
         // You could also add:
         // { chain: 'optimism', protoA: 'velodrome_v2', protoB: 'aerodrome' }
     ];
