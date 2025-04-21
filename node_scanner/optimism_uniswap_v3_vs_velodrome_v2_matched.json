@@ -2,6 +2,7 @@
   {
     "tokenA": "0x4200000000000000000000000000000000000006",
     "tokenB": "0xda10009cbd5d07dd0cecc66161fc93d7c9000da1",
+    "pairSymbols": "WETH/DAI",
     "uniswap_v3_pools": [
       "0x03af20bdaaffb4cc0a521796a223f7d85e2aac31",
       "0x1a172713bdf4b9c846028e43081e73ca90a399dd"
@@ -13,6 +14,7 @@
   {
     "tokenA": "0x1f32b1c2345538c0c6f582fcb022739c4a194ebb",
     "tokenB": "0x4200000000000000000000000000000000000006",
+    "pairSymbols": "wstETH/WETH",
     "uniswap_v3_pools": [
       "0x04f6c85a1b00f6d9b75f91fd23835974cc07e65c"
     ],
@@ -23,6 +25,7 @@
   {
     "tokenA": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
     "tokenB": "0x8c6f28f2f1a3c87f0f938b96d27520d9751ec8d9",
+    "pairSymbols": "USDC/sUSD",
     "uniswap_v3_pools": [
       "0x06f6928553a2952befe48dbe344cfbc663b80870"
     ],
@@ -33,6 +36,7 @@
   {
     "tokenA": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
     "tokenB": "0xdc6ff44d5d932cbd77b52e5612ba0529dc6226f1",
+    "pairSymbols": "USDC/WLD",
     "uniswap_v3_pools": [
       "0x08159908698d5a73476da7dccad79614f68beec2"
     ],
@@ -44,6 +48,7 @@
   {
     "tokenA": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
     "tokenB": "0xeb466342c4d449bc9f53a865d5cb90586f405215",
+    "pairSymbols": "USDC/axlUSDC",
     "uniswap_v3_pools": [
       "0x0d165f5bcc9cbb9cf75cef8b09cc77b1749a2a33"
     ],
@@ -54,6 +59,7 @@
   {
     "tokenA": "0x4200000000000000000000000000000000000006",
     "tokenB": "0x9560e827af36c94d2ac33a39bce1fe78631088db",
+    "pairSymbols": "WETH/VELO",
     "uniswap_v3_pools": [
       "0x0fb07e6d6e1f52c839608e1436d2ea810cf07257",
       "0x141c3264642264976baa2f41b3bdead67d6690c1"
@@ -66,6 +72,7 @@
   {
     "tokenA": "0x1f32b1c2345538c0c6f582fcb022739c4a194ebb",
     "tokenB": "0x2416092f143378750bb29b79ed961ab195cceea5",
+    "pairSymbols": "wstETH/ezETH",
     "uniswap_v3_pools": [
       "0x139168b43218ec132528e3264b9973b4adc16b0b"
     ],
@@ -76,6 +83,7 @@
   {
     "tokenA": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
     "tokenB": "0x2218a117083f5b482b0bb821d27056ba9c04b1d3",
+    "pairSymbols": "USDC/sDAI",
     "uniswap_v3_pools": [
       "0x15242d52ec61d50ee01925e63b9c45f57c7893e3"
     ],
@@ -86,6 +94,7 @@
   {
     "tokenA": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
     "tokenB": "0x9560e827af36c94d2ac33a39bce1fe78631088db",
+    "pairSymbols": "USDC/VELO",
     "uniswap_v3_pools": [
       "0x1529e6ac4819fd7f4fa11822b2d3d0ef870884df"
     ],
@@ -96,6 +105,7 @@
   {
     "tokenA": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
     "tokenB": "0x4200000000000000000000000000000000000006",
+    "pairSymbols": "USDC/WETH",
     "uniswap_v3_pools": [
       "0x1fb3cf6e48f1e7b10213e7b6d87d4c073c7fdb7b"
     ],
@@ -106,6 +116,7 @@
   {
     "tokenA": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
     "tokenB": "0x73cb180bf0521828d8849bc8cf2b920918e23032",
+    "pairSymbols": "USDC/USD+",
     "uniswap_v3_pools": [
       "0x2180e7423e6c495e8f5c8de71f22b94933ef3f98"
     ],
@@ -116,6 +127,7 @@
   {
     "tokenA": "0x12ff4a259e14d4dcd239c447d23c9b00f7781d8f",
     "tokenB": "0x4200000000000000000000000000000000000006",
+    "pairSymbols": "PEPE/WETH",
     "uniswap_v3_pools": [
       "0x242f80a5ac004323bac34ee91c3a85ae51b0ef1c"
     ],
@@ -126,6 +138,7 @@
   {
     "tokenA": "0x4200000000000000000000000000000000000006",
     "tokenB": "0xc40f949f8a4e094d1b49a23ea9241d289b7b2819",
+    "pairSymbols": "WETH/LUSD",
     "uniswap_v3_pools": [
       "0x2432bb97dcbf9bd78bf130f181901d6290828524"
     ],

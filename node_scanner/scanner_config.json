@@ -12,21 +12,21 @@
           "subgraphId": "Cghf4LfVqPiFw6fp6Y5X5Ubc8UpmUhSfJL82zwiBFLaj",
           "useApiKey": true,
           "poolFieldName": "pools",
-          "query": "query GetPools($pageSize: Int!, $lastId: ID!) {\n  pools(first: $pageSize, orderBy: id, orderDirection: asc, where: { id_gt: $lastId }) {\n    id\n    token0 { id }\n    token1 { id }\n    feeTier\n  }\n}"
+          "query": "query GetPools($pageSize: Int!, $lastId: ID!) {\n  pools(first: $pageSize, orderBy: id, orderDirection: asc, where: { id_gt: $lastId }) {\n    id\n    token0 { id symbol }\n    token1 { id symbol }\n    feeTier\n  }\n}"
         },
         "velodrome_v2": {
           "displayName": "Velodrome V2",
           "subgraphId": "BsBDqDf6rJJyxKACZrCHAa8Gaf384cmL2hxfLaDuB8XM",
           "useApiKey": true,
           "poolFieldName": "pools",
-          "query": "query GetPools($pageSize: Int!, $lastId: ID!) {\n  pools(first: $pageSize, orderBy: id, orderDirection: asc, where: { id_gt: $lastId }) {\n    id\n    token0 { id }\n    token1 { id }\n  }\n}"
+          "query": "query GetPools($pageSize: Int!, $lastId: ID!) {\n  pools(first: $pageSize, orderBy: id, orderDirection: asc, where: { id_gt: $lastId }) {\n    id\n    token0 { id symbol }\n    token1 { id symbol }\n  }\n}"
         },
-        "aerodrome": {
-          "displayName": "Aerodrome",
-          "subgraphId": "QmVJaMkE238uK4YDCBGRcSgka3Ki9jJAFVUFKoDFEx1N51",
+        "balancer_v2": {
+          "displayName": "Balancer V2 Beta",
+          "subgraphId": "Efs3Sv5GACef2fCYzTetooYFvm4TMUcxKXKBkRjaJ9XM",
           "useApiKey": true,
           "poolFieldName": "pools",
-          "query": "query GetPools($pageSize: Int!, $lastId: ID!) {\n  pools(first: $pageSize, orderBy: id, orderDirection: asc, where: { id_gt: $lastId }) {\n    id\n    token0 { id }\n    token1 { id }\n  }\n}"
+          "query": "query GetPools($pageSize: Int!, $lastId: ID!) {\n  pools(first: $pageSize, orderBy: id, orderDirection: asc, where: { id_gt: $lastId }) {\n    id\n    tokens(first: 10) { address symbol }\n  }\n}"
         }
       }
     }
