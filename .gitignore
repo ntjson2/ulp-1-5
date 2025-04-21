@@ -38,4 +38,4 @@ target/
 .env
 bot/.env
 .secret.env
-
+/node_scanner_legacy
