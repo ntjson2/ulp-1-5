@@ -6,6 +6,8 @@ debug/
 **/*.rs.bk
 # Ignore node_modules folder
 node_modules/
+txtexport_flattened/
+tools/
 
 # Ignore log files
 *.log
@@ -22,20 +24,19 @@ Thumbs.db
 *.pdb
 # Ignore Visual Studio Code settings folder
 .vscode/
-univ4/
-/univ4
 
 # Added by cargo
-huff-neo/
-huff-neo.exe
 /target
-
-
+Cargo.lock
 # Exclude the huff.exe tool
-tools/huff.exe
+
+
+
 #/target
 target/
 .env
 bot/.env
 .secret.env
-/node_scanner_legacy
+node_scanner_legacy/
+node_scanner/
+.venv
