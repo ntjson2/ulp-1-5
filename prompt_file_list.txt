@@ -1,0 +1,7 @@
+/bot/src/
+/abis/
+/contracts/
+Cargo.toml
+general_guide.md
+ulp1.5.md
+prompt.md
