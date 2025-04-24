@@ -1,6 +1,3 @@
-Okay, here is the complete handoff package formatted in Markdown.
-
-```markdown
 # BEGIN HANDOFF PACKAGE FOR ULP 1.5 (Elite Performance Refocus)
 
 **(Instructions for AI receiving this context):**
@@ -223,4 +220,3 @@ RUST_LOG="info,ulp1_5=debug" # Adjust level (e.g., trace for deep debug)
 ---
 
 **END OF HANDOFF PACKAGE (Elite Performance Refocus)**
-```
