@@ -72,3 +72,16 @@ type                 2
 blobGasPrice         1
 blobGasUsed
 authorizationList
+
+## Integration with ULP 1.5
+
+## 🚀 Overview
+
+ULP 1.5 foundation to enable arbitrage across 20+ Layer 2 DEXs using Balancer flash loans and ultra-low latency Huff executors.
+
+## 🧪 Local Simulation
+
+Use [Foundry's Anvil](https://book.getfoundry.sh/anvil/) for local forking and live simulations:
+
+```bash
+anvil --fork-url https://mainnet.optimism.io --chain-id 10
