@@ -3,50 +3,65 @@
 
 use ethers::{
     prelude::{Middleware, SignerMiddleware, Provider, Http, LocalWallet}, // Core types
-    // Need contract bindings to generate calldata
-    // FIX: Correct import path for BalancerVault from our bindings module
-    // bindings::BalancerVault, // <- REMOVE THIS WRONG LINE
+    // Contract bindings are imported via crate root in this version
     types::{Address, Bytes, Eip1559TransactionRequest, U256}, // Tx types & Bytes
 };
 use eyre::{Result, WrapErr}; // Error handling
 use std::sync::Arc; // Arc for client
+use tracing::{debug, instrument}; // Import tracing macros
 
-// Re-import from crate root
-use crate::bindings::BalancerVault; // <<< ADD THIS CORRECT LINE
+// Re-import BalancerVault binding from crate root
+use crate::bindings::BalancerVault;
 
 /// Estimates the gas required for the Balancer flash loan transaction.
-// ... (Rest of the file is the same as previous correct version) ...
+/// This involves sending an `eth_estimateGas` RPC call.
+#[instrument(skip(client, user_data), level = "debug", fields(
+    vault = %balancer_vault_address,
+    receiver = %receiver,
+    token = %token_in,
+    amount = %amount_in_wei,
+))]
 pub async fn estimate_flash_loan_gas(
     client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
     balancer_vault_address: Address,
-    receiver: Address,
-    token_in: Address,
-    amount_in_wei: U256,
-    user_data: Bytes,
+    receiver: Address, // The address that will receive the flash loan (our ArbitrageExecutor)
+    token_in: Address, // The token being loaned
+    amount_in_wei: U256, // The amount of the token being loaned
+    user_data: Bytes,   // Encoded data passed to the receiver's callback
 ) -> Result<U256> {
-    println!("      Estimating gas...");
+    debug!("Estimating gas for flash loan transaction...");
 
     // Prepare parameters for flash loan calldata generation
     let tokens = vec![token_in];
     let amounts = vec![amount_in_wei];
 
-    // Generate the calldata using the imported BalancerVault type
-    let flash_loan_calldata = BalancerVault::new(balancer_vault_address, client.clone())
+    // Create a BalancerVault instance to generate calldata easily
+    let vault_contract = BalancerVault::new(balancer_vault_address, client.clone());
+
+    // Generate the calldata for the flashLoan function call
+    let flash_loan_calldata = vault_contract
         .flash_loan(receiver, tokens, amounts, user_data)
-        .calldata()
-        .ok_or_else(|| eyre::eyre!("Failed to get flashLoan calldata"))?;
+        .calldata() // Get the Bytes representation of the call
+        .ok_or_else(|| eyre::eyre!("Failed to generate flashLoan calldata"))?; // Handle potential Option::None
 
     // Create the transaction request for estimation
+    // We only need `to` and `data` for gas estimation. `from` will be filled by the middleware.
     let tx_request = Eip1559TransactionRequest::new()
         .to(balancer_vault_address)
         .data(flash_loan_calldata);
 
-    // Estimate gas using the client
+    // Estimate gas using the client middleware
+    // The `estimate_gas` function takes a `&TypedTransaction` and optional block number.
+    // We convert our Eip1559 request into a generic `TypedTransaction`.
     let estimated_gas_units = client
-        .estimate_gas(&tx_request.into(), None)
+        .estimate_gas(&tx_request.clone().into(), None) // Use .into() for conversion, clone tx_request if needed later
         .await
-        .wrap_err("Gas estimation failed")?;
+        .wrap_err_with(|| format!( // Add context to the error
+            "Gas estimation failed for flashLoan to vault {} for receiver {}",
+            balancer_vault_address, receiver
+        ))?;
 
-    println!("      Est. Gas Units: {}", estimated_gas_units);
+    debug!(estimated_gas = %estimated_gas_units, "Gas estimation successful");
     Ok(estimated_gas_units)
 }
+// END OF FILE: bot/src/gas.rs
