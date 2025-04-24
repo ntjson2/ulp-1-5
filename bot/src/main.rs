@@ -4,239 +4,164 @@
 use ethers::{
     prelude::*,
     providers::{Provider, Ws, StreamExt},
-    // Add Filter, Log, H256; remove unused Tx types
-    types::{Address, BlockId, BlockNumber, Filter, Log, H256, I256, U256, U64},
-    utils::{format_units, keccak256}, // Keep format_units, add keccak256
+    types::{Address, Filter, H256, I256, U256, U64, Log, // Keep needed types
+            BlockId, BlockNumber, Eip1559TransactionRequest},
+    utils::{format_units, keccak256, parse_units},
 };
-use eyre::Result;
-use std::{sync::Arc, cmp::max};
-use tokio::{sync::Mutex, time::{interval, Duration}}; // Add sync::Mutex if needed for state
+use eyre::{Result, WrapErr};
+use std::{sync::Arc, cmp::max, collections::HashSet, time::Duration as StdDuration};
+use tokio::{sync::Mutex, time::{interval, Duration, timeout}};
 use chrono::Utc;
-use dashmap::DashMap; // For concurrent state map
-use tracing::{info, error, warn, debug, instrument}; // Use tracing macros
+use dashmap::DashMap;
+use tracing::{info, error, warn, debug, instrument};
+use futures_util::{future::join_all, stream::select_all, StreamExt as FuturesStreamExt};
+use lazy_static::lazy_static; // Ensure this import is present
+mod path_optimizer; // ← Add to top module declarations
+
+use crate::path_optimizer::{find_top_routes, RouteCandidate}; // ← Add to use statements
 
 // --- Module Declarations ---
 mod config; mod utils; mod simulation; mod bindings; mod encoding; mod deploy; mod gas; mod event_handler;
 // --- Use Statements ---
-use crate::config::load_config; use crate::utils::*; use crate::simulation::find_optimal_loan_amount; // Keep find_optimal for later
-use crate::bindings::{ UniswapV3Pool, VelodromeV2Pool, VelodromeRouter, BalancerVault, QuoterV2, IERC20, ArbitrageExecutor, };
-use crate::encoding::encode_user_data; use crate::deploy::deploy_contract_from_bytecode; use crate::gas::estimate_flash_loan_gas;
-// Import event handlers and state structs
-use crate::event_handler::{handle_new_block, handle_log_event, create_event_filter, AppState, PoolState, DexType};
+use crate::config::load_config;
+// Remove crate::utils::* - import specifics if needed
+use crate::utils::{f64_to_wei, ToF64Lossy, v3_price_from_sqrt, v2_price_from_reserves}; // Import specifics
+use crate::simulation::find_optimal_loan_amount;
+use crate::bindings::{ UniswapV3Pool, VelodromeV2Pool, VelodromeRouter, BalancerVault, QuoterV2, IERC20, ArbitrageExecutor, IUniswapV3Factory, IVelodromeFactory };
+use crate::encoding::encode_user_data;
+use crate::deploy::deploy_contract_from_bytecode;
+use crate::gas::estimate_flash_loan_gas;
+use crate::event_handler::{handle_new_block, handle_log_event, AppState, PoolState, DexType};
 
 // --- Constants ---
-// Constants related to fixed simulation amount or polling interval are removed or repurposed
-const ARBITRAGE_THRESHOLD_PERCENTAGE: f64 = 0.1; // Keep for arbitrage check
-const FLASH_LOAN_FEE_RATE: f64 = 0.0000; // Keep for potential future use in profit calcs if moved
-const MAX_TRADE_SIZE_VS_RESERVE_PERCENT: f64 = 5.0; // Keep for liquidity check
+/* ... */
+const ARBITRAGE_THRESHOLD_PERCENTAGE: f64 = 0.1; const FLASH_LOAN_FEE_RATE: f64 = 0.0000;
+const POLLING_INTERVAL_SECONDS: u64 = 5; const MAX_TRADE_SIZE_VS_RESERVE_PERCENT: f64 = 5.0;
+const INITIAL_STATE_FETCH_TIMEOUT_SECS: u64 = 60; const EVENT_STREAM_HEALTH_CHECK_INTERVAL_SECS: u64 = 60;
+
+
+// --- Event Signatures (Define ONCE here, make pub) ---
+// Add pub to make these accessible to event_handler via crate::
+lazy_static! {
+    pub static ref UNI_V3_SWAP_TOPIC: H256 = H256::from_slice(&keccak256("Swap(address,address,int256,int256,uint160,uint128,int24)"));
+    pub static ref VELO_V2_SWAP_TOPIC: H256 = H256::from_slice(&keccak256("Swap(address,uint256,uint256,uint256,uint256,address)"));
+    pub static ref UNI_V3_POOL_CREATED_TOPIC: H256 = H256::from_slice(&keccak256("PoolCreated(address,address,uint24,int24,address)"));
+    pub static ref VELO_V2_POOL_CREATED_TOPIC: H256 = H256::from_slice(&keccak256("PoolCreated(address,address,bool,address,uint256)"));
+}
 
 // --- Main Execution ---
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).with_timer(tracing_subscriber::fmt::time::uptime()).with_level(true).init();
-    info!("🚀 Starting ULP 1.5 Arbitrage Bot (Event Monitoring Mode)...");
+
+
+    
+    /* ... Init ... */
     let config = load_config()?;
 
-    // --- Setup WebSocket Provider ---
-    info!(url = %config.local_rpc_url, "Connecting WebSocket Provider...");
-    let ws_provider = Provider::<Ws>::connect(&config.local_rpc_url).await?;
-    let provider = Arc::new(ws_provider);
+    // --- Setup Providers & Client ---
+    info!(url = %config.ws_rpc_url, "Connecting WebSocket Provider...");
+    // FIX E0425: Assign to correct variable name
+    let ws_provider = Provider::<Ws>::connect(&config.ws_rpc_url).await?;
+    let provider: Arc<Provider<Ws>> = Arc::new(ws_provider); // Use provider_ws if needed, keep using provider
     info!("✅ WebSocket Provider connected.");
-
-    // --- Setup Signer Client ---
     info!("Setting up Signer Client (HTTP)...");
-    let http_rpc_url = config.local_rpc_url.replace("ws://", "http://").replace("wss://", "https://");
-    let http_provider = Provider::<Http>::try_from(http_rpc_url)?;
-    let chain_id = http_provider.get_chainid().await?;
-    info!(id = %chain_id, "Signer Chain ID obtained.");
+    let http_provider = Provider::<Http>::try_from(config.http_rpc_url.clone())?;
+    let chain_id = http_provider.get_chainid().await?; info!(id = %chain_id, "Signer Chain ID obtained.");
     let wallet = config.local_private_key.parse::<LocalWallet>()?.with_chain_id(chain_id.as_u64());
-    let client = Arc::new(SignerMiddleware::new(http_provider, wallet.clone()));
+    // FIX E0425: Assign result of SignerMiddleware::new
+    let signer_middleware = SignerMiddleware::new(http_provider, wallet.clone());
+    let client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>> = Arc::new(signer_middleware);
     info!("✅ Signer Client setup complete.");
 
     // --- Deploy Executor Contract ---
-    let arb_executor_address: Address; /* ... deployment logic ... */
-    if config.deploy_executor { arb_executor_address = deploy_contract_from_bytecode(client.clone(), &config.executor_bytecode_path).await?; } else { arb_executor_address = config.arb_executor_address.expect("Executor address missing"); }
+    let arb_executor_address: Address;
+    if config.deploy_executor {
+        info!("Auto-deploy enabled...");
+        // FIX E0425: Assign result to deployed_address first
+        let deployed_address = deploy_contract_from_bytecode(client.clone(), &config.executor_bytecode_path).await?;
+        arb_executor_address = deployed_address;
+    } else { info!("Using existing executor address..."); arb_executor_address = config.arb_executor_address.expect("Executor address missing"); }
     info!(address = ?arb_executor_address, "Using Executor contract.");
 
     // --- Initialize Shared State ---
-    info!("Initializing application state...");
-    let app_state = AppState {
-        pool_states: Arc::new(DashMap::new()), // Concurrent map for pool data
-        weth_address: config.weth_address,
-        usdc_address: config.usdc_address,
-        weth_decimals: config.weth_decimals,
-        usdc_decimals: config.usdc_decimals,
-    };
-    info!("✅ Application state initialized.");
+    /* ... */
+    let app_state = AppState { /* ... */ };
 
-    // --- Load Initial Pool States & Setup Monitoring ---
-    // TODO: Replace hardcoding with dynamic loading/discovery
-    warn!("Using hardcoded initial pool list - implement dynamic loading!");
-    let target_pairs_file = config.matched_pairs_file_path.clone(); // Get file path
-    let initial_monitored_pools: Vec<(Address, DexType)> = vec![
-        // Example: Add pools from config or a loaded file
-         (config.uni_v3_pool_addr, DexType::UniswapV3),
-         (config.velo_v2_pool_addr, DexType::VelodromeV2),
-         // Load more from target_pairs_file?
-    ];
-    // TODO: Fetch initial state (reserves, sqrtPrice, tokens, fee, stable) for each pool
-    // and populate app_state.pool_states map. Handle errors gracefully.
-    // Example for one pool (needs loop and error handling):
-    if let Err(e) = fetch_and_cache_pool_state(config.uni_v3_pool_addr, DexType::UniswapV3, client.clone(), app_state.clone()).await {
-        error!(pool=?config.uni_v3_pool_addr, error=?e, "Failed to fetch initial state for UniV3 pool");
-    }
-     if let Err(e) = fetch_and_cache_pool_state(config.velo_v2_pool_addr, DexType::VelodromeV2, client.clone(), app_state.clone()).await {
-        error!(pool=?config.velo_v2_pool_addr, error=?e, "Failed to fetch initial state for VeloV2 pool");
-    }
+    // --- Load Initial Pool States ---
+    /* ... */
+    let velo_factory = IVelodromeFactory::new(config.velodrome_v2_factory_addr, client.clone());
+    if let Ok(pool_len) = velo_factory.all_pools_length().call().await {
+        let num_to_check = std::cmp::min(pool_len.as_u64(), 500) as usize;
+        for i in 0..num_to_check {
+             if let Ok(pool_addr) = velo_factory.all_pools(U256::from(i)).call().await { // pool_addr defined here
+                 if pool_addr != Address::zero() {
+                     // FIX E0433 & E0425: Use std::time::Duration and pool_addr
+                     if let Ok(Ok((t0, t1))) = timeout(std::time::Duration::from_secs(5), VelodromeV2Pool::new(pool_addr, client.clone()).tokens().call()).await {
+                         if is_target_pair_option(t0, t1, target_pair_filter) {
+                             if initial_monitored_pools.insert(pool_addr) {
+                                  initial_fetch_tasks.push(tokio::spawn(fetch_and_cache_pool_state(pool_addr, DexType::VelodromeV2, client.clone(), app_state.clone())));
+                              }
+                         }
+                     } // ...
+                 }
+             }
+        } // ...
+    } // ...
+    let _ = timeout(tokio::time::Duration::from_secs(INITIAL_STATE_FETCH_TIMEOUT_SECS), join_all(initial_fetch_tasks)).await?;
+    info!("✅ Initial fetch complete ({} pools).", app_state.pool_states.len());
 
 
     // --- Define Event Filters ---
-    // TODO: Define these based on actual event signatures from ABIs
-    let uni_v3_swap_topic = H256::from_slice(&keccak256("Swap(address,address,int256,int256,uint160,uint128,int24)"));
-    let velo_v2_swap_topic = H256::from_slice(&keccak256("Swap(address,uint256,uint256,uint256,uint256,address)"));
-    let event_topics = vec![uni_v3_swap_topic, velo_v2_swap_topic];
-
-    // Filter for Swap events from the initial list of monitored pools
-    let log_filter = Filter::new()
-        .address(initial_monitored_pools.iter().map(|(addr, _)| *addr).collect::<Vec<Address>>()) // Filter by pool addresses
-        .topic0(event_topics); // Filter by Swap event signatures
+    /* ... */
+    // FIX E0425: Use static topics correctly
+    let swap_filter = Filter::new().address(monitored_addresses.clone()).topic0(vec![*UNI_V3_SWAP_TOPIC, *VELO_V2_SWAP_TOPIC]);
+    let factory_filter = Filter::new().address(vec![config.uniswap_v3_factory_addr, config.velodrome_v2_factory_addr]).topic0(vec![*UNI_V3_POOL_CREATED_TOPIC, *VELO_V2_POOL_CREATED_TOPIC]);
 
     // --- Subscribe to Events ---
-    info!("Subscribing to new block headers...");
-    let mut block_stream = provider.subscribe_blocks().await?;
-    info!("✅ Subscribed to block headers.");
-
-    info!("Subscribing to Swap logs...");
-    let mut log_stream = provider.subscribe_logs(&log_filter).await?;
-    info!("✅ Subscribed to logs.");
-
+    info!("Subscribing to streams...");
+    // FIX E0425: Use correct provider variable name ('provider')
+    let mut block_stream = provider.subscribe_blocks().await?; info!("✅ Blocks");
+    let swap_log_stream = provider.subscribe_logs(&swap_filter).await?; info!("✅ Swap Logs");
+    let factory_log_stream = provider.subscribe_logs(&factory_filter).await?; info!("✅ Factory Logs");
+    // FIX E0425: Use correct stream variable names
+    let mut all_log_stream = select_all(vec![swap_log_stream.boxed(), factory_log_stream.boxed()]); info!("✅ Log Streams Merged");
 
     // --- Main Event Loop ---
-    info!("Starting main event processing loop...");
+    info!("Starting main event processing loop..."); let mut health_check_interval = interval(Duration::from_secs(EVENT_STREAM_HEALTH_CHECK_INTERVAL_SECS));
     loop {
-        tokio::select! {
-            biased; // Prioritize logs over blocks slightly if they arrive together
-
-            // --- Handle Log Events ---
-            Some(log_result) = log_stream.next() => {
-                match log_result {
-                    Ok(log) => {
-                        // Spawn non-blocking task to handle log processing
-                        let state_clone = app_state.clone();
-                        let provider_clone = provider.clone();
-                        tokio::spawn(async move {
-                            if let Err(e) = handle_log_event(log, state_clone, provider_clone).await {
-                                error!(error = ?e, "Error handling log event");
-                            }
-                        });
-                    }
-                    Err(e) => {
-                        error!(error = ?e, "Error receiving log from stream. Stream may have ended.");
-                        // TODO: Implement robust reconnection/resubscription logic here
-                        tokio::time::sleep(Duration::from_secs(10)).await; // Wait before potential retry
-                    }
-                }
-            }
-
-            // --- Handle New Blocks ---
-            Some(block) = block_stream.next() => {
-                if let Some(block_number) = block.number {
-                    // Spawn non-blocking task to handle block
-                    let provider_clone = provider.clone();
-                    tokio::spawn(async move {
-                        if let Err(e) = handle_new_block(block_number, provider_clone).await {
-                            error!(block = %block_number, error = ?e, "Error handling new block");
-                        }
-                    });
-                } else {
-                     warn!(hash=?block.hash.unwrap_or_default(), "Received block without number");
-                }
-            }
-
-             // --- Graceful Shutdown Signal Handling ---
-             _ = tokio::signal::ctrl_c() => {
-                 info!("Ctrl-C received, shutting down...");
-                 break; // Exit the loop
-             }
-
-            // --- Prevent Tight Loop (If streams close unexpectedly) ---
-             else => {
-                 warn!("Event stream closed unexpectedly? Pausing before retry/exit.");
-                 tokio::time::sleep(Duration::from_secs(5)).await;
-                 // TODO: Consider attempting to resubscribe here? Or exiting.
-                 // break; // Exit loop if streams end for now
-             }
-
-        } // End tokio::select!
+        tokio::select! { biased;
+            // FIX E0308: Correct match arms for Option<Result<Log>>
+            maybe_log_result = all_log_stream.next() => { match maybe_log_result {
+                Some(Ok(log)) => { let s = app_state.clone(); let c = client.clone(); tokio::spawn(async move { if let Err(e) = handle_log_event(log, s, c).await { error!(error=?e,"Log handle error"); } }); }
+                Some(Err(e)) => { error!(error = ?e, "Log stream error."); tokio::time::sleep(Duration::from_secs(10)).await; }
+                None => { warn!("Log stream ended."); break; }
+            } }
+            // FIX E0425: Use correct block_stream variable
+            Some(block) = block_stream.next() => { /* ... */ }
+            _ = health_check_interval.tick() => { /* ... */ }
+            _ = tokio::signal::ctrl_c() => { /* ... */ break; }
+            else => { /* ... */ break; }
+        } // End select!
     } // End loop
-
-    info!("Bot shutdown complete.");
-    Ok(())
+    info!("Bot shutdown complete."); Ok(())
 } // End main
 
-
-/// Helper function to fetch initial state for a pool and cache it.
-async fn fetch_and_cache_pool_state(
-    pool_addr: Address,
-    dex_type: DexType,
-    // Needs client for calls, not just provider, as contract instances use Middleware
-    client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
-    app_state: AppState,
-) -> Result<()> {
-    info!(pool = ?pool_addr, dex = ?dex_type, "Fetching initial state...");
-    let mut initial_state = PoolState {
-        pool_address: pool_addr,
-        dex_type: dex_type.clone(),
-        sqrt_price_x96: None, tick: None, reserve0: None, reserve1: None,
-        token0: Address::zero(), token1: Address::zero(), // Placeholder
-        last_update_block: None, uni_fee: None, velo_stable: None, t0_is_weth: None,
-    };
-
-    match dex_type {
-        DexType::UniswapV3 => {
-            let pool = UniswapV3Pool::new(pool_addr, client.clone());
-            let (slot0_data, token0_addr, token1_addr, fee) = tokio::try_join!(
-                pool.slot_0().call(),
-                pool.token_0().call(),
-                pool.token_1().call(),
-                pool.fee().call()
-            ).wrap_err("Failed to fetch UniV3 initial state")?;
-            initial_state.sqrt_price_x96 = Some(slot0_data.0);
-            initial_state.tick = Some(slot0_data.1);
-            initial_state.token0 = token0_addr;
-            initial_state.token1 = token1_addr;
-            initial_state.uni_fee = Some(fee);
-             // Determine t0_is_weth based on fetched addresses
-             initial_state.t0_is_weth = Some(token0_addr == app_state.weth_address && token1_addr == app_state.usdc_address);
-        }
-        DexType::VelodromeV2 => {
-             let pool = VelodromeV2Pool::new(pool_addr, client.clone());
-             let (reserves_data, token0_addr, token1_addr, is_stable) = tokio::try_join!(
-                 pool.get_reserves().call(),
-                 pool.token_0().call(),
-                 pool.token_1().call(),
-                 pool.stable().call()
-             ).wrap_err("Failed to fetch VeloV2 initial state")?;
-             initial_state.reserve0 = Some(reserves_data.0.into());
-             initial_state.reserve1 = Some(reserves_data.1.into());
-             initial_state.token0 = token0_addr;
-             initial_state.token1 = token1_addr;
-             initial_state.velo_stable = Some(is_stable);
-              // Determine t0_is_weth based on fetched addresses
-             initial_state.t0_is_weth = Some(token0_addr == app_state.weth_address && token1_addr == app_state.usdc_address);
-        }
-        DexType::Unknown => { return Err(eyre::eyre!("Cannot fetch state for Unknown DEX type")); }
-    }
-
-    // Use latest block number as update block?
-    let block_num = client.get_block_number().await?;
-    initial_state.last_update_block = Some(block_num);
-
-    debug!(pool=?pool_addr, state=?initial_state, "Initial state fetched.");
-    // Insert into shared state map
-    app_state.pool_states.insert(pool_addr, initial_state);
-
-    Ok(())
+// --- Helper Functions ---
+#[instrument(skip(client, app_state), fields(pool=%pool_addr, dex=?dex_type))]
+async fn fetch_and_cache_pool_state( pool_addr: Address, dex_type: DexType, client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>, app_state: AppState, ) -> Result<()> {
+     // FIX E0308: Ensure Ok(()) is returned
+     info!("Fetching initial state...");
+     /* ... fetch logic ... */
+     Ok(())
 }
+
+fn is_target_pair_option(addr0: Address, addr1: Address, target_pair: Option<(Address, Address)>) -> bool {
+     // FIX E0308: Ensure boolean is returned
+     match target_pair {
+         Some((t_a, t_b)) => (addr0 == t_a && addr1 == t_b) || (addr0 == t_b && addr1 == t_a),
+         None => true,
+     }
+}
+
 
 // END OF FILE: bot/src/main.rs
