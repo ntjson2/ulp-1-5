@@ -1,0 +1,11 @@
+Double check current system for compatibility, errors, etc. Only give fully functional file with consideration to breaking changes, recent functional changes and future direction.
+Go, continue: bundling file changes into one whole functioning file, no partial files or snippets, i.e. ... (imports) ...
+Todo comments ok as long as you remember to return to them. This strategy is called A6.
+
+go A6
+
+
+ MU2 Task 3.2 (Scalable Core): Implement robust dynamic gas price fetching in transaction.rs, following Strategy A6.
+ 
+ 
+ j8 is a prompt technique where you give me the next whole functional file (no partial files or snippets, (i.e. ... (imports) ...), Todo comments ok as long as you remember to return to them) after consideration to breaking changes, recent functional changes and future code direction. You give one file at a time then stop, posting a short summary, estimated project percent complete. This process is started by prompting: j8 go
