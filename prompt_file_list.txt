@@ -4,3 +4,4 @@
 Cargo.toml
 README.md
 prompt.md
+.env
