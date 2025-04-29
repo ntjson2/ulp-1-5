@@ -57,15 +57,42 @@ pub struct Config {
     pub secondary_private_rpc_url: Option<String>, // Secondary/fallback private relay
 }
 
-// --- Parsing helpers (unchanged) ---
-fn parse_address_env(var_name: &str) -> Result<Address> { let s=env::var(var_name)?; s.parse().map_err(|e| eyre!("{}: {}",var_name,e).into()) }
-fn parse_optional_address_env(var_name: &str) -> Result<Option<Address>> { match env::var(var_name) { Ok(s) if s.is_empty() => Ok(None), Ok(s) => s.parse().map(Some).map_err(|e|eyre!("{}: {}",var_name,e).into()), Err(env::VarError::NotPresent) => Ok(None), Err(e) => Err(e).wrap_err(var_name) } }
-fn parse_u8_env(var_name: &str) -> Result<u8> { let s=env::var(var_name)?; s.parse().map_err(|e|eyre!("{}: {}",var_name,e).into()) }
-fn parse_f64_env(var_name: &str, default: f64) -> f64 { env::var(var_name).ok().and_then(|s|s.parse().ok()).unwrap_or(default) }
-fn parse_optional_f64_env(var_name: &str) -> Result<Option<f64>> { match env::var(var_name) { Ok(s) if s.is_empty() => Ok(None), Ok(s) => s.parse().map(Some).map_err(|e|eyre!("{}: {}",var_name,e).into()), Err(env::VarError::NotPresent) => Ok(None), Err(e) => Err(e).wrap_err(var_name) } }
-fn parse_u32_env(var_name: &str, default: u32) -> u32 { env::var(var_name).ok().and_then(|s|s.parse().ok()).unwrap_or(default) }
-fn parse_u64_env(var_name: &str, default: u64) -> u64 { env::var(var_name).ok().and_then(|s|s.parse().ok()).unwrap_or(default) }
-fn parse_optional_u64_env(var_name: &str) -> Result<Option<u64>> { match env::var(var_name) { Ok(s) if s.is_empty() => Ok(None), Ok(s) => s.parse().map(Some).map_err(|e|eyre!("{}: {}",var_name,e).into()), Err(env::VarError::NotPresent) => Ok(None), Err(e) => Err(e).wrap_err(var_name) } }
+// --- Parsing helpers ---
+fn parse_address_env(var_name: &str) -> Result<Address> { let s = env::var(var_name)?; s.parse().map_err(|e| eyre!("Invalid address format for {}: {}", var_name, e)).wrap_err_with(|| format!("Failed to parse env var {}", var_name)) }
+fn parse_optional_address_env(var_name: &str) -> Result<Option<Address>> {
+    match env::var(var_name) {
+        Ok(s) if s.is_empty() => Ok(None),
+        // FIX E0521: Ensure error message construction doesn't capture non-'static var_name
+        Ok(s) => s.parse().map(Some).map_err(|e| eyre!("Invalid optional address format for {}: {}", var_name.to_string(), e)),
+        Err(env::VarError::NotPresent) => Ok(None),
+        // FIX E0521: Use eyre!(e).wrap_err(...)
+        Err(e) => Err(eyre!(e).wrap_err(format!("Error checking env var {}", var_name))),
+    }
+}
+fn parse_u8_env(var_name: &str) -> Result<u8> { let s = env::var(var_name)?; s.parse().map_err(|e| eyre!("Invalid u8 format for {}: {}", var_name, e)).wrap_err_with(|| format!("Failed to parse env var {}", var_name)) }
+fn parse_f64_env(var_name: &str, default: f64) -> f64 { env::var(var_name).ok().and_then(|s| s.parse().ok()).unwrap_or_else(|| { warn!("Using default f64 for {}: {}", var_name, default); default }) }
+fn parse_optional_f64_env(var_name: &str) -> Result<Option<f64>> {
+    match env::var(var_name) {
+        Ok(s) if s.is_empty() => Ok(None),
+        // FIX E0521: Ensure error message construction doesn't capture non-'static var_name
+        Ok(s) => s.parse().map(Some).map_err(|e| eyre!("Invalid optional f64 format for {}: {}", var_name.to_string(), e)),
+        Err(env::VarError::NotPresent) => Ok(None),
+        // FIX E0521: Use eyre!(e).wrap_err(...)
+        Err(e) => Err(eyre!(e).wrap_err(format!("Error checking env var {}", var_name))),
+    }
+}
+fn parse_u32_env(var_name: &str, default: u32) -> u32 { env::var(var_name).ok().and_then(|s| s.parse().ok()).unwrap_or_else(|| { warn!("Using default u32 for {}: {}", var_name, default); default }) }
+fn parse_u64_env(var_name: &str, default: u64) -> u64 { env::var(var_name).ok().and_then(|s| s.parse().ok()).unwrap_or_else(|| { warn!("Using default u64 for {}: {}", var_name, default); default }) }
+fn parse_optional_u64_env(var_name: &str) -> Result<Option<u64>> {
+     match env::var(var_name) {
+        Ok(s) if s.is_empty() => Ok(None),
+        // FIX E0521: Ensure error message construction doesn't capture non-'static var_name
+        Ok(s) => s.parse().map(Some).map_err(|e| eyre!("Invalid optional u64 format for {}: {}", var_name.to_string(), e)),
+        Err(env::VarError::NotPresent) => Ok(None),
+        // FIX E0521: Use eyre!(e).wrap_err(...)
+        Err(e) => Err(eyre!(e).wrap_err(format!("Error checking env var {}", var_name))),
+    }
+}
 // Updated parse_bool_env to explicitly default to false if var not present or invalid
 fn parse_bool_env(var_name: &str) -> bool {
     env::var(var_name)
@@ -119,5 +146,3 @@ pub fn load_config() -> Result<Config> {
     };
     info!("✅ Config loaded."); debug!(?config); Ok(config)
 }
-
-// END OF FILE: bot/src/config.rs

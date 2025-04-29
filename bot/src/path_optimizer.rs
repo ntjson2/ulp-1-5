@@ -1,15 +1,17 @@
 // bot/src/path_optimizer.rs
 
 use crate::config::Config;
-// Import necessary types from state module
-use crate::state::{AppState, DexType, PoolSnapshot, PoolState}; // Ensure DexType is imported
-// Import base price calculation utilities FROM utils.rs
-use crate::utils::{v2_price_from_reserves, v3_price_from_sqrt}; // Correct import path
-use dashmap::DashMap;
-use ethers::types::{Address, U256};
-use eyre::{eyre, Result, WrapErr}; // Import eyre components
+// FIX Warning: Remove unused AppState, PoolState
+use crate::state::{DexType, PoolSnapshot, PoolState};
+// FIX Warning: Remove unused v2_price_from_reserves, v3_price_from_sqrt
+// use crate::utils::{v2_price_from_reserves, v3_price_from_sqrt};
+// FIX Warning: Remove unused U256
+use ethers::types::Address;
+use eyre::{eyre, Result, WrapErr};
+use dashmap::DashMap; // Keep DashMap
 use std::sync::Arc;
-use tracing::{debug, error, info, instrument, trace, warn};
+// FIX Warning: Remove unused error
+use tracing::{debug, info, instrument, trace, warn};
 
 // Represents a potential arbitrage opportunity (route) found.
 #[derive(Debug, Clone)]
@@ -33,12 +35,13 @@ const ARBITRAGE_THRESHOLD_PERCENTAGE: f64 = 0.1; // Example: 0.1% difference nee
 
 /// Identifies potential 2-way arbitrage routes involving the updated pool's snapshot.
 /// Compares prices derived from snapshots in the hot cache.
-#[instrument(skip(all_pool_states, all_pool_snapshots, config), level="debug", fields(pool=%updated_pool_snapshot.pool_address))]
+// FIX instrument skip error: removed non-existent 'config' from skip list
+#[instrument(skip(all_pool_states, all_pool_snapshots), level="debug", fields(pool=%updated_pool_snapshot.pool_address))]
 pub fn find_top_routes(
     updated_pool_snapshot: &PoolSnapshot, // Triggering snapshot
     all_pool_states: &Arc<DashMap<Address, PoolState>>, // Source of detailed state context
     all_pool_snapshots: &Arc<DashMap<Address, PoolSnapshot>>, // Map to iterate for comparison (hot cache)
-    config: &Config,
+    _config: &Config, // Mark as unused
     weth_address: Address,
     usdc_address: Address,
     weth_decimals: u8,
@@ -89,7 +92,13 @@ pub fn find_top_routes(
 
         let price_diff = updated_price - other_price;
         let lower_price = updated_price.min(other_price);
-        let price_diff_percentage = (price_diff.abs() / lower_price) * 100.0;
+        // Avoid division by zero if lower_price is extremely small
+        let price_diff_percentage = if lower_price.abs() > f64::EPSILON {
+            (price_diff.abs() / lower_price) * 100.0
+        } else {
+            f64::INFINITY // Treat as infinite difference if base price is zero
+        };
+
 
         trace!( pool1 = %updated_pool_address, price1 = updated_price, pool2 = %other_pool_addr, price2 = other_price, diff_pct = price_diff_percentage );
 
@@ -110,12 +119,12 @@ pub fn find_top_routes(
             let candidate = RouteCandidate {
                 buy_pool_addr: buy_snapshot.pool_address,
                 sell_pool_addr: sell_snapshot.pool_address,
-                buy_dex_type: buy_snapshot.dex_type.clone(), // Use DexType from snapshot
-                sell_dex_type: sell_snapshot.dex_type.clone(), // Use DexType from snapshot
+                buy_dex_type: buy_snapshot.dex_type, // DexType is Copy
+                sell_dex_type: sell_snapshot.dex_type, // DexType is Copy
                 token_in: weth_address, token_out: usdc_address,
                 buy_pool_fee: buy_state.uni_fee, sell_pool_fee: sell_state.uni_fee, // Use fee/stable from detail state
                 buy_pool_stable: buy_state.velo_stable, sell_pool_stable: sell_state.velo_stable,
-                zero_for_one_a, estimated_profit_usd: price_diff_percentage,
+                zero_for_one_a, estimated_profit_usd: price_diff_percentage, // Use percentage diff as placeholder estimate
             };
 
             debug!(candidate = ?candidate, "Created RouteCandidate");
@@ -146,53 +155,49 @@ fn calculate_cached_price(
     snapshot: &PoolSnapshot,
     state_context: &PoolState,
     weth_address: Address,
-    _usdc_address: Address,
+    _usdc_address: Address, // Marked unused
     weth_decimals: u8,
     usdc_decimals: u8,
 ) -> Result<f64> {
     // Sanity checks
     if snapshot.pool_address != state_context.pool_address { return Err(eyre!("Snapshot/State address mismatch")); }
-    if snapshot.dex_type != state_context.dex_type { warn!(pool=%snapshot.pool_address, "Snapshot/State DEX mismatch!"); }
+    if snapshot.dex_type != state_context.dex_type { warn!(pool=%snapshot.pool_address, snap_dex=?snapshot.dex_type, state_dex=?state_context.dex_type, "Snapshot/State DEX mismatch!"); }
 
     // Determine t0_is_weth from reliable PoolState context
     let t0_is_weth = match state_context.t0_is_weth {
         Some(is_weth) => is_weth,
-        None => { warn!(pool = %state_context.pool_address, "t0_is_weth flag not cached"); state_context.token0 == weth_address }
+        None => { warn!(pool = %state_context.pool_address, "t0_is_weth flag not cached in state context, deriving from tokens"); state_context.token0 == weth_address }
     };
 
-    // Calculate raw price t1/t0 using snapshot data and utils functions
-    let price_t1_per_t0 = match snapshot.dex_type {
+    // FIX E0599: Apply wrap_err_with to the Result from the match
+    let price_t1_per_t0_result = match snapshot.dex_type {
         DexType::UniswapV3 => {
             let sqrt_price = snapshot.sqrt_price_x96.ok_or_else(|| eyre!("Snapshot missing sqrtPriceX96"))?;
             let (dec0, dec1) = if t0_is_weth { (weth_decimals, usdc_decimals) } else { (usdc_decimals, weth_decimals) };
-            // *** Calling function from utils.rs ***
-            crate::utils::v3_price_from_sqrt(sqrt_price, dec0, dec1)?
+            crate::utils::v3_price_from_sqrt(sqrt_price, dec0, dec1)
         }
         DexType::VelodromeV2 | DexType::Aerodrome => {
             let r0 = snapshot.reserve0.ok_or_else(|| eyre!("Snapshot missing reserve0"))?;
             let r1 = snapshot.reserve1.ok_or_else(|| eyre!("Snapshot missing reserve1"))?;
             let (dec0, dec1) = if t0_is_weth { (weth_decimals, usdc_decimals) } else { (usdc_decimals, weth_decimals) };
-            // *** Calling function from utils.rs ***
-            crate::utils::v2_price_from_reserves(r0, r1, dec0, dec1)?
+            crate::utils::v2_price_from_reserves(r0, r1, dec0, dec1)
         }
-        DexType::Unknown => return Err(eyre!("Unknown DEX type in snapshot"))
-    }.wrap_err_with(|| format!("Base price calculation failed for pool {}", snapshot.pool_address))?;
-
-
-    // Convert price(T1)/price(T0) to price(WETH)/price(USDC)
-    let price_weth_per_usdc = if t0_is_weth {
-        if price_t1_per_t0.abs() < f64::EPSILON { return Err(eyre!("Intermediate price zero, cannot invert")); }
-        1.0 / price_t1_per_t0
-    } else {
-        price_t1_per_t0
+        DexType::Unknown => Err(eyre!("Unknown DEX type in snapshot"))
     };
 
-    if !price_weth_per_usdc.is_finite() { return Err(eyre!("Calculated non-finite WETH/USDC price")); }
+    let price_t1_per_t0 = price_t1_per_t0_result
+        .wrap_err_with(|| format!("Base price calculation failed for pool {}", snapshot.pool_address))?;
 
-    trace!(price = price_weth_per_usdc, "Calculated WETH/USDC price from snapshot");
-    Ok(price_weth_per_usdc)
+    // Convert price(T1)/price(T0) to price(USDC)/price(WETH)
+    let price_usdc_per_weth = if t0_is_weth { // T0=WETH, T1=USDC. price_t1_per_t0 = USDC/WETH
+        price_t1_per_t0
+    } else { // T0=USDC, T1=WETH. price_t1_per_t0 = WETH/USDC. Need inverse for USDC/WETH
+        if price_t1_per_t0.abs() < f64::EPSILON { return Err(eyre!("Intermediate price zero, cannot invert")); }
+        1.0 / price_t1_per_t0
+    };
+
+    if !price_usdc_per_weth.is_finite() { return Err(eyre!("Calculated non-finite USDC/WETH price")); }
+
+    trace!(price = price_usdc_per_weth, "Calculated USDC/WETH price from snapshot");
+    Ok(price_usdc_per_weth)
 }
-
-// *** Removed the duplicate calculate_pool_price_weth_per_usdc function ***
-
-// END OF FILE: bot/src/path_optimizer.rs

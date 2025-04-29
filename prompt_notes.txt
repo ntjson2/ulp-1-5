@@ -46,3 +46,26 @@ When I enter "A7 go", generate and return the prompt.md based on this informatio
 
 > **Trigger Command:**  
 > When I type **"j9 go"**, begin this flow.
+
+Update parts of j9 prompt. Adjust to give me all of the files that need fixing in one response. 
+Separate whole, complete files out into sections that I can copy independently. 
+Update j9 prompt from this guidance. Then stop and wait for me to cargo check.
+
+------------------------ prompt run log ------------
+
+transaction
+event_handler
+simulation
+utils
+main
+State
+local_simulator
+path_optimizer
+event_handler
+--------------
+
+
+
+-----------------
+cargo check
+run# 306. j9 go
