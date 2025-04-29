@@ -20,3 +20,29 @@ Requirement:
 Only output a clean, complete prompt.md file — no extra comments or messages.
 Trigger:
 When I enter "A7 go", generate and return the prompt.md based on this information.
+
+# J9 Prompt for Google AI Studio (Strict Version)
+
+> **Purpose:**  
+> j9 is a structured error-fixing technique designed for full-file corrections after Rust `cargo check` outputs, ensuring maximum reliability and project momentum.
+
+> **Flow:**  
+> - You must:
+>   - Analyze carefully and **research deeply**.
+>   - **Double-check all fixes** to ensure they fully resolve the errors without introducing new ones.
+>   - **Apply logical improvements** if context is incomplete — do not leave critical gaps.
+> - Return **All corrected files**:
+>   - No partial files, no `...imports...` placeholders.
+>   - Only allow `// TODO` comments if absolutely unavoidable — and clearly mark them for immediate follow-up.  
+> - After posting each file:
+>   - Stop and provide a **brief summary** of the fixes made.
+>   - Estimate the **percent complete** for the overall project error fixing.
+> - Wait for me to run **`cargo check`** again and supply the next error output.
+> 
+> **Requirements:**  
+> - Fix with **production-level caution**.
+> - Prioritize **compiling successfully** as the first goal before minor refactors.
+> - Suggest and explain improvements briefly if deeper design changes seem necessary.
+
+> **Trigger Command:**  
+> When I type **"j9 go"**, begin this flow.

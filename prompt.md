@@ -1,134 +1,69 @@
-# HANDOFF PACKAGE FOR ULP 1.5 (Elite Performance Refocus)
+# ULP 1.5 Arbitrage Bot - Project Summary & State (Scalable Core v4)
 
-## Instructions for AI
+## 1. Project Goal & History
 
-This document contains the complete project state, code, and history for the ULP 1.5 Cross-DEX Arbitrage Bot. The project has pivoted to a **high-performance, event-driven architecture** aimed at elite performance and competitiveness. The following instructions outline the current state and next steps:
+*   **Initial Goal:** High-frequency, high-profit ($40k+/day) L2 arbitrage using advanced techniques (co-location, complex routing).
+*   **Pivot (Scalable Core):** Refocused on building a robust, efficient core system first.
+    *   **Phase 1 Goal:** Achieve reliable $400-$800/day profit on standard cloud infrastructure using $10k-$500k flash loans (Balancer V2, 0-fee assumed).
+    *   **Phase 2 Goal:** Enable scaling towards $40k+/day by leveraging the core architecture with future infrastructure/strategy upgrades (e.g., <5ms latency via co-location, larger capital, advanced routing).
+*   **Current Focus:** Target L2s (Optimism, Base initially), WETH/USDC pair, 2-way arbitrage paths via Uniswap V3, Velodrome V2, and Aerodrome.
 
-1.  **Focus on the High-Performance Strategy:**
+## 2. Core Architecture & Features
 
-    The system must support near real-time detection, multi-DEX routing, and high-frequency arbitrage execution. Ignore earlier descriptions involving basic RPC polling or simple WebSocket handling.
+*   **Backend:** Event-driven Rust application using `tokio` and `ethers-rs`.
+*   **Data Source:** WebSocket subscriptions to DEX Swap/PoolCreated events via public/paid RPC endpoints.
+*   **State Management (`state.rs`):**
+    *   `AppState`: Central shared state using `Arc`.
+    *   `PoolState`: Map (`DashMap`) holding detailed pool context (tokens, fees, stability, etc.), fetched on startup/discovery.
+    *   `PoolSnapshot`: Map (`DashMap`) acting as an **in-memory hot-cache** holding frequently updated data (reserves, sqrtPrice, tick), updated directly from `Swap` events or reserve fetches.
+*   **Arbitrage Flow:**
+    1.  **Event Handling (`event_handler.rs`):** Receives swap events, rapidly updates the `PoolSnapshot` hot-cache. Spawns non-blocking task for `check_for_arbitrage`. Handles `PoolCreated` events, triggers state fetching.
+    2.  **Pathfinding (`path_optimizer.rs`):** Triggered by `check_for_arbitrage`. Reads *only* from the `PoolSnapshot` hot-cache for speed. Compares updated pool price (derived from cache) against other cached pool prices. Identifies 2-way routes exceeding a basic percentage threshold. Generates `RouteCandidate` structs.
+    3.  **Simulation (`simulation.rs`):** Triggered by `check_for_arbitrage` for promising `RouteCandidate`s (spawned task).
+        *   Uses `Arc<AppState>` and `Arc<Client>` to initialize DEX Quoters/Routers *internally* based on config addresses.
+        *   Calls `QuoterV2::quote_exact_input_single` or Router `getAmountsOut` via **RPC** for accurate swap amount predictions.
+        *   Performs **dynamic loan sizing** based on V2/Aero reserves (using `PoolSnapshot` data passed down) via `calculate_dynamic_max_loan`. UniV3 sizing uses a configurable placeholder (defaults to config max).
+        *   Performs iterative search (`find_optimal_loan_amount`) within dynamic bounds to find max profit.
+        *   Estimates gas cost using `eth_estimateGas`.
+        *   Calculates net profit (Gross - Gas).
+    4.  **Transaction (`transaction.rs`):** Triggered if simulation finds positive profit.
+        *   Calculates `minProfitWei` threshold (simulated profit - buffer).
+        *   Generates unique `salt`.
+        *   Encodes `userData` (pools, direction, flags, `minProfitWei`, `salt`).
+        *   Fetches dynamic EIP-1559 gas prices (with fallback).
+        *   Estimates final gas limit (with buffer/minimum).
+        *   Retrieves next nonce from `NonceManager`.
+        *   Constructs and signs the `flashLoan` transaction.
+        *   **Private Submission:** Attempts submission sequentially via configured primary/secondary private relays (supports Alchemy `alchemy_sendPrivateTransaction` and Flashbots `eth_sendPrivateRawTransaction` methods based on URL heuristic) with fallback to public `eth_sendRawTransaction`.
+        *   **Monitoring:** Basic monitoring awaits transaction confirmation with timeout, logs success/revert/drop status and gas used. Basic nonce error detection and cache invalidation implemented. Includes `ALERT:` log prefixes for critical events.
+*   **On-Chain (`ArbitrageExecutor.huff` v2.3.0):**
+    *   Receives Balancer flash loan.
+    *   Performs 2-way swaps (UniV3 / VeloV2-style).
+    *   Checks received `salt` against storage mapping (`SALT_SEEN_MAPPING_SLOT`) to prevent replays.
+    *   Checks `final_balance >= loan_amount + minProfitWei` (loaded from `userData`).
+    *   Approves Balancer repayment only if checks pass.
+    *   Reverts otherwise, ensuring atomicity.
+*   **Testing:** Local simulation workflow documented using Anvil forks (`local_simulator.rs`).
 
-2.  **Immediate Next Step:**
+## 3. Current Task & Next Steps
 
-    Implement **MU1 - Task Bundle 8: Advanced Detection & Routing**, which includes:
+*   **Last Completed:** MU2 Task 4.3 (Implemented specific Flashbots relay logic in `transaction.rs`).
+*   **Current State:** Codebase includes core features for Phase 1. Most structural elements are in place. Compiles unsuccessfully after recent error fixing.
+*   **Immediate Next Task (j8):** **MU2 Task 5.3 (Testing & Refinement) - Enhance `README.md` with detailed Anvil Testing Procedures.** Document specific `cast send` commands or test scenarios to verify:
+    *   Event detection and state updates.
+    *   Pathfinding logic.
+    *   Simulation accuracy.
+    *   Dynamic loan sizing behavior.
+    *   Transaction submission (publicly against Anvil fork).
+    *   Huff contract execution (profit/salt guards) via Anvil tracing/debugging.
+*   **Subsequent Tasks:**
+    *   Perform actual Anvil testing based on the documented procedures.
+    *   Implement robust transaction monitoring & nonce error recovery.
+    *   Refine `minProfitWei` buffer calculation.
+    *   (Lower Priority) Implement UniV3 dynamic loan sizing.
+    *   (Lower Priority) Add more DEXs (Ramses).
+    *   (Lower Priority) Integrate external alerting.
 
-    *   Designing and coding near real-time data acquisition (Optimized RPC, Advanced WS, or Mempool).
-    *   Implementing multi-DEX pathfinding and optimization logic.
+## 4. Project Goal Alignment
 
-3.  **Code State:**
-
-    The Rust code compiles successfully (`cargo check`) but requires significant refactoring to align with the high-performance architecture. The Huff contract also needs enhancements for multi-hop/multi-DEX support.
-
----
-
-## Addendum to Instructions for AI
-
-### MU1 Strategy (Multi-Task Bundles) - *Deprecated*
-
-*   Bundle 2-5 related implementation steps into a single response.
-*   Provide **complete, updated files** for all affected components.
-*   Summarize changes and list modified files.
-*   Stop after providing the bundle and wait for the user's next instructions.
-
-### MU2 Strategy (Single-Task Steps) - *Active*
-
-*   Focus on **one task or logical code change** per response.
-*   Provide the **complete, updated code** for **only one affected file** at a time.
-*   If the file is a Rust (`.rs`) file, present it in a copyable code block.
-*   Avoid placeholders like "add this code here"; provide the full file content.
-*   **Stop after providing the single file update** and wait for user confirmation/guidance before proceeding to the next task or file.
-*   Include the task number, the next specific action (e.g., "Update file X"), and the estimated project completion percentage.
-
----
-
-## Summary of Current Status
-
-### Objective
-
-Develop a **high-frequency, high-performance arbitrage system** optimized for L2 execution (Optimism, Base, Arbitrum). The system aims to maximize profit by capturing price discrepancies across **multiple DEXs (20+)** using Balancer V2 flash loans and near real-time data acquisition. First we are aiming for a simulation of this project on Anvil.
-
-### Key Features
-
-1.  **Near Real-Time Detection:** Monitor blockchain state for price divergences.
-2.  **Pathfinding & Optimization:** Identify profitable multi-hop arbitrage paths.
-3.  **Atomic Execution:** Use a gas-optimized Huff contract for execution.
-4.  **On-Chain Verification:** Ensure profitability before loan repayment.
-5.  **Simulation:** Simulation of this project on Anvil
-
-### Current Codebase
-
-*   **On-Chain:** `ArbitrageExecutor.huff` supports 2-way swaps but needs enhancements for multi-hop/multi-DEX routing.
-*   **Off-Chain:** Rust bot structure exists but requires major refactoring for high-speed data handling, state management, and pathfinding.
-
-### Major TODOs
-
-1.  Implement high-speed data acquisition (Optimized RPC, WS Events, or Mempool).
-2.  Build a robust state cache for multi-DEX data.
-3.  Develop pathfinding logic for 2-way and 3-way arbitrage.
-4.  Enhance the Huff contract for multi-hop/multi-DEX support.
-5.  Integrate components for seamless detection, optimization, and execution.
-
----
-
-## Build/Run Instructions
-
-1.  **Prerequisites:** Install Rust, Foundry (`anvil`, `cast`), and `huffc`.
-
-2.  **Environment:** Populate `.env` with RPC endpoints, private keys, and configuration settings. Ensure WETH/USDC addresses and decimals for the target chain (e.g., Optimism) are included.
-
-3.  **Compile Huff Contract:**
-
-    ```bash
-    huffc ./contracts/ArbitrageExecutor.huff -b -o ./build/ArbitrageExecutor.bin
-    ```
-
-4.  **Build Rust Code:**
-
-    ```bash
-    cargo build --release
-    ```
-
-5.  **Run Bot:**
-
-    ```bash
-    # Example: Set log level via environment variable
-    # RUST_LOG=info,ulp1_5=debug
-    cargo run --release --bin ulp1_5
-    ```
-
----
-
-## Configuration (`.env` Example - Optimism)
-
-```dotenv
-# Network & Keys (Use Anvil for local simulation)
-WS_RPC_URL="ws://127.0.0.1:8545"
-HTTP_RPC_URL="http://127.0.0.1:8545"
-LOCAL_PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" # Anvil default key 0
-
-# Contract Addresses (Optimism Mainnet Addresses)
-# Replace ARBITRAGE_EXECUTOR_ADDRESS if DEPLOY_EXECUTOR=false
-ARBITRAGE_EXECUTOR_ADDRESS="" # Fill in if using existing deployment
-UNISWAP_V3_FACTORY_ADDR="0x1F98431c8aD98523631AE4a59f267346ea31F984"
-VELODROME_V2_FACTORY_ADDR="0x25CbdDb98b35AB1FF795324516342Fac4845718f"
-WETH_ADDRESS="0x4200000000000000000000000000000000000006"
-USDC_ADDRESS="0x7F5c764cBc14f9669B88837ca1490cCa17c31607" # Note: USDC Bridged (USDC.e) might be 0x7F5c7... or Native USDC 0x0b2C6... Check pools!
-WETH_DECIMALS=18
-USDC_DECIMALS=6 # Check decimals for the specific USDC used in pools
-VELO_V2_ROUTER_ADDR="0x9c12939390052919aF3155f41Bf41543Ca30607P" # CHECK ACTUAL ADDRESS - Placeholder invalid
-BALANCER_VAULT_ADDRESS="0xBA12222222228d8Ba445958a75a0704d566BF2C9" # Same on most chains
-QUOTER_V2_ADDRESS="0xbC52C688c34A4F6180437B40593F1F9638C2571d" # CHECK ACTUAL ADDRESS - Placeholder likely invalid
-
-# Deployment Settings
-DEPLOY_EXECUTOR="true" # Set to false if ARBITRAGE_EXECUTOR_ADDRESS is filled
-EXECUTOR_BYTECODE_PATH="./build/ArbitrageExecutor.bin"
-
-# Optimization Settings
-MIN_LOAN_AMOUNT_WETH="0.1"
-MAX_LOAN_AMOUNT_WETH="50.0"
-OPTIMAL_LOAN_SEARCH_ITERATIONS=10
-
-# Gas Pricing Settings (Adjust for Optimism L2)
-MAX_PRIORITY_FEE_PER_GAS_GWEI="0.01" # L2 priority fees are usually very low
-GAS_LIMIT_BUFFER_PERCENTAGE="25"
-MIN_FLASHLOAN_GAS_LIMIT=400000 # Adjust based on L2 execution costs
+The current state provides a solid foundation for **Phase 1** ($400-$800/day). Key elements for **Phase 2** ($40k+/day) like the hot-cache structure and modular transaction submission are present, allowing future integration of ultra-low latency data sources/submission paths and advanced routing without a full rewrite. The immediate focus on testing ensures the core logic is sound before scaling or adding complexity.
