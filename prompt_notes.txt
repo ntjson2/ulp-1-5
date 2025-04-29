@@ -9,3 +9,14 @@ go A6
  
  
  j8 is a prompt technique where you give me the next whole functional file (no partial files or snippets, (i.e. ... (imports) ...), Todo comments ok as long as you remember to return to them) after consideration to breaking changes, recent functional changes and future code direction. You give one file at a time then stop, posting a short summary, estimated project percent complete. This process is started by prompting: j8 go
+ 
+Inputs:
+You will be provided with a file called all_files_combined.txt, which contains the current versions of all project files. Review this.
+Bundle the Project Information into a single concise prompt (prompt.md).
+Project Information:
+Critical State Information, Project History, goals, Current task, Future Tasks
+
+Requirement:
+Only output a clean, complete prompt.md file — no extra comments or messages.
+Trigger:
+When I enter "A7 go", generate and return the prompt.md based on this information.
