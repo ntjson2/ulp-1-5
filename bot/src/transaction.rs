@@ -8,7 +8,9 @@ use crate::state::{AppState, DexType};
 use crate::path_optimizer::RouteCandidate;
 use ethers::{
     prelude::*,
-    providers::{MiddlewareError, ProviderError},
+    // FIX Warning: Remove unused MiddlewareError, ProviderError
+    // providers::{MiddlewareError, ProviderError},
+    providers::MiddlewareError, // Keep MiddlewareError for error context check
     types::{
         transaction::eip2718::TypedTransaction, Address, Bytes, Eip1559TransactionRequest, U256,
         U64, I256, TxHash,
@@ -112,7 +114,7 @@ pub async fn submit_arbitrage_transaction(
 ) -> Result<TxHash> {
     info!("Attempting submission & monitoring");
     let config = &app_state.config;
-    let tx_hash: Option<TxHash>;
+    // No longer need `tx_hash` var here, will get from submit_sequentially directly
 
     // --- Steps 1-8 (Prepare Tx Data & Sign) ---
     let gas_info = fetch_gas_price(client.clone(), config).await.wrap_err("ALERT: Failed gas price fetch pre-submission")?;
@@ -133,24 +135,26 @@ pub async fn submit_arbitrage_transaction(
     let rlp_hex = format!("0x{}", hex::encode(rlp_signed.as_ref()));
 
     // --- Step 9 (Attempt Submissions Sequentially) ---
-    let pending_tx_result = submit_sequentially( &config, client.provider(), client.clone(), &rlp_hex, &rlp_signed ).await;
-    let pending_tx = match pending_tx_result {
-        Ok(ptx) => {
-            let current_tx_hash = ptx.tx_hash();
-            tx_hash = Some(current_tx_hash);
-            tracing::Span::current().record("tx_hash", tracing::field::debug(current_tx_hash));
-            ptx
+    // FIX E0515: `submit_sequentially` now returns Result<TxHash>
+    let submitted_tx_hash = match submit_sequentially( &config, client.provider(), client.clone(), &rlp_hex, &rlp_signed ).await {
+        Ok(hash) => {
+            // Record hash in span *after* successful submission attempt (may not confirm)
+            tracing::Span::current().record("tx_hash", tracing::field::debug(hash));
+            hash
         },
         Err(submission_error) => {
             error!(error = ?submission_error, route = ?route, "ALERT: All transaction submission attempts failed.");
             if submission_error.to_string().to_lowercase().contains("nonce") { nonce_manager.handle_nonce_error().await; }
-            return Err(submission_error);
+            return Err(submission_error); // Return early if submission failed
         }
     };
 
+
     // --- Step 10 (Monitor Submitted Transaction) ---
-    let submitted_tx_hash = tx_hash.unwrap();
     info!(%submitted_tx_hash, "Submitted, awaiting confirmation (timeout: {}s)...", TX_CONFIRMATION_TIMEOUT_SECS);
+    // FIX E0515: Create PendingTransaction here using the returned hash and the client
+    let pending_tx = PendingTransaction::new(submitted_tx_hash, client.provider());
+
     match timeout(Duration::from_secs(TX_CONFIRMATION_TIMEOUT_SECS), pending_tx).await {
         Err(_) => {
             warn!(%submitted_tx_hash, timeout_secs = TX_CONFIRMATION_TIMEOUT_SECS, route = ?route, "ALERT: Timeout waiting for transaction confirmation.");
@@ -198,8 +202,10 @@ async fn send_flashbots_private_tx( provider: &Provider<Http>, rlp_hex: &str ) -
     provider.inner().request(method,params).await.map_err(|e|eyre!(e.to_string()))
 }
 // --- Helper: submit_sequentially ---
-async fn submit_sequentially( config: &Config, _provider: &Provider<Http>, client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>, rlp_hex: &str, rlp_signed: &Bytes ) -> Result<PendingTransaction<'static, Http>> {
-    let mut last_error: Option<eyre::Report> = None;
+// FIX E0515: Change return type to Result<TxHash>
+async fn submit_sequentially( config: &Config, _provider: &Provider<Http>, client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>, rlp_hex: &str, rlp_signed: &Bytes ) -> Result<TxHash> {
+    // FIX Warning: Remove unused last_error
+    // let mut last_error: Option<eyre::Report> = None;
 
     // 1. Try Primary Private Relay
     if let Some(url) = &config.private_rpc_url {
@@ -214,17 +220,18 @@ async fn submit_sequentially( config: &Config, _provider: &Provider<Http>, clien
                 match result {
                     Ok(tx_hash) => {
                         info!(%tx_hash, relay = url, "Submitted via Primary Private Relay.");
-                        return Ok(PendingTransaction::new(tx_hash, client.provider()));
+                        // FIX E0515: Return only the hash
+                        return Ok(tx_hash);
                     }
                     Err(e) => {
                         warn!(error = ?e, relay = url, "Primary Private Relay submission failed.");
-                        last_error = Some(e.wrap_err("Primary Private Relay failed"));
+                        // last_error = Some(e.wrap_err("Primary Private Relay failed")); // FIX Warning: Removed
                     }
                 }
             }
             Err(e) => {
                  warn!(error = ?e, url = url, "Failed to create provider for primary relay.");
-                 last_error = Some(eyre!(e).wrap_err("Failed to create provider for primary relay"));
+                 // last_error = Some(eyre!(e).wrap_err("Failed to create provider for primary relay")); // FIX Warning: Removed
             }
         }
     }
@@ -242,17 +249,18 @@ async fn submit_sequentially( config: &Config, _provider: &Provider<Http>, clien
                 match result {
                     Ok(tx_hash) => {
                         info!(%tx_hash, relay = url, "Submitted via Secondary Private Relay.");
-                        return Ok(PendingTransaction::new(tx_hash, client.provider()));
+                        // FIX E0515: Return only the hash
+                        return Ok(tx_hash);
                     }
                     Err(e) => {
                         warn!(error = ?e, relay = url, "Secondary Private Relay submission failed.");
-                        last_error = Some(e.wrap_err("Secondary Private Relay failed"));
+                        // last_error = Some(e.wrap_err("Secondary Private Relay failed")); // FIX Warning: Removed
                     }
                 }
              }
              Err(e) => {
                   warn!(error = ?e, url = url, "Failed to create provider for secondary relay.");
-                  last_error = Some(eyre!(e).wrap_err("Failed to create provider for secondary relay"));
+                  // last_error = Some(eyre!(e).wrap_err("Failed to create provider for secondary relay")); // FIX Warning: Removed
              }
          }
     }
@@ -261,16 +269,20 @@ async fn submit_sequentially( config: &Config, _provider: &Provider<Http>, clien
     info!("Attempting submission via Public RPC...");
     match client.send_raw_transaction(rlp_signed.clone()).await {
         Ok(pending_tx) => {
-            info!(tx_hash = ?pending_tx.tx_hash(), "Submitted via Public RPC.");
-            return Ok(pending_tx);
+            let tx_hash = pending_tx.tx_hash();
+            info!(%tx_hash, "Submitted via Public RPC.");
+            // FIX E0515: Return only the hash
+            return Ok(tx_hash);
         }
         Err(e) => {
             error!(error = ?e, "Public RPC submission failed.");
-             // FIX E0782: Simplify the match, use e.to_string()
-             let middleware_error_context = format!(" ({})", e.to_string());
-            last_error = Some(eyre!(e).wrap_err(format!("Public RPC submission failed{}", middleware_error_context)));
+            // Simplify error handling as last_error is removed
+            let middleware_error_context = format!(" ({})", e.to_string());
+            // Directly return the final error
+            return Err(eyre!(e).wrap_err(format!("Public RPC submission failed{}", middleware_error_context)));
         }
     }
 
-    Err(last_error.unwrap_or_else(|| eyre!("No submission methods configured or succeeded")))
+    // If no method succeeded and no error was returned above (shouldn't happen with current logic)
+    // Err(last_error.unwrap_or_else(|| eyre!("No submission methods configured or succeeded"))) // FIX Warning: Removed
 }
