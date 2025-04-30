@@ -3,4 +3,5 @@
 /contracts/
 Cargo.toml
 README.md
+j9.md
 .env
