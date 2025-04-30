@@ -22,29 +22,29 @@ use eyre::Result; // Error handling
 /// * `is_a_velo`: Boolean indicating if Pool A is a Velodrome pool.
 /// * `is_b_velo`: Boolean indicating if Pool B is a Velodrome pool.
 /// * `velo_router_addr`: Address of the Velodrome Router (needed by Huff for Velo swaps).
+/// * `min_profit_wei`: Minimum required profit in loan token (T0) wei for tx to succeed.
+/// * `salt`: A unique nonce/salt (uint256) for this specific transaction attempt.
 ///
 /// # Returns
 /// * `Result<Bytes>`: The ABI-encoded `userData` or an error.
 pub fn encode_user_data(
     pool_a_addr: Address,
     pool_b_addr: Address,
-    token1_addr: Address,
+    token1_addr: Address, // Intermediate token
     zero_for_one_a: bool,
     is_a_velo: bool,
     is_b_velo: bool,
     velo_router_addr: Address,
+    min_profit_wei: U256, // Minimum profit threshold in loan token wei
+    salt: U256,           // Unique salt for replay protection
 ) -> Result<Bytes> {
-    // Convert boolean flags to U256 values (1 or 0) as the Huff contract
-    // likely reads these flags as full words (uint256) using calldataload.
-    let zero_for_one_a_u256 = U256::from(if zero_for_one_a { 1 } else { 0 });
-    let is_a_velo_u256 = U256::from(if is_a_velo { 1 } else { 0 });
-    let is_b_velo_u256 = U256::from(if is_b_velo { 1 } else { 0 });
+    // Convert boolean flags to U256 values (1 or 0)
+    let zero_for_one_a_u256 = U256::from(u8::from(zero_for_one_a));
+    let is_a_velo_u256 = U256::from(u8::from(is_a_velo));
+    let is_b_velo_u256 = U256::from(u8::from(is_b_velo));
 
     // Use ethers::abi::encode_packed to concatenate the token representations
-    // without padding between elements, matching common calldata packing.
-    // Ensure the order of tokens matches the exact order the Huff contract
-    // expects to read them with calldataload offsets.
-    // Offsets based on previous analysis:
+    // Offsets based on Huff contract v2.3.0:
     // 0x00: pool_A_addr
     // 0x20: pool_B_addr
     // 0x40: token1_addr
@@ -52,6 +52,8 @@ pub fn encode_user_data(
     // 0x80: is_A_Velo (as uint)
     // 0xA0: is_B_Velo (as uint)
     // 0xC0: velo_router_addr
+    // 0xE0: minProfitWei (as uint)
+    // 0x100: salt (as uint) ** NEW **
     encode_packed(&[
         Token::Address(pool_a_addr),        // [0x00 - 0x1F]
         Token::Address(pool_b_addr),        // [0x20 - 0x3F]
@@ -60,9 +62,11 @@ pub fn encode_user_data(
         Token::Uint(is_a_velo_u256),        // [0x80 - 0x9F]
         Token::Uint(is_b_velo_u256),        // [0xA0 - 0xBF]
         Token::Address(velo_router_addr),   // [0xC0 - 0xDF]
+        Token::Uint(min_profit_wei),        // [0xE0 - 0xFF]
+        Token::Uint(salt),                  // [0x100 - 0x11F] ** NEW **
     ])
-    // Map potential encoding errors to eyre::Report
     .map_err(|e| eyre::eyre!("Failed to encode user data: {}", e))
-    // encode_packed returns Vec<u8>, convert it to ethers::types::Bytes
     .map(Bytes::from)
 }
+
+// END OF FILE: bot/src/encoding.rs

@@ -1,0 +1,71 @@
+Double check current system for compatibility, errors, etc. Only give fully functional file with consideration to breaking changes, recent functional changes and future direction.
+Go, continue: bundling file changes into one whole functioning file, no partial files or snippets, i.e. ... (imports) ...
+Todo comments ok as long as you remember to return to them. This strategy is called A6.
+
+go A6
+
+
+ MU2 Task 3.2 (Scalable Core): Implement robust dynamic gas price fetching in transaction.rs, following Strategy A6.
+ 
+ 
+ j8 is a prompt technique where you give me the next whole functional file (no partial files or snippets, (i.e. ... (imports) ...), Todo comments ok as long as you remember to return to them) after consideration to breaking changes, recent functional changes and future code direction. You give one file at a time then stop, posting a short summary, estimated project percent complete. This process is started by prompting: j8 go
+ 
+Inputs:
+You will be provided with a file called all_files_combined.txt, which contains the current versions of all project files. Review this.
+Bundle the Project Information into a single concise prompt (prompt.md).
+Project Information:
+Critical State Information, Project History, goals, Current task, Future Tasks
+
+Requirement:
+Only output a clean, complete prompt.md file — no extra comments or messages.
+Trigger:
+When I enter "A7 go", generate and return the prompt.md based on this information.
+
+# J9 Prompt for Google AI Studio (Strict Version)
+
+> **Purpose:**  
+> j9 is a structured error-fixing technique designed for full-file corrections after Rust `cargo check` outputs, ensuring maximum reliability and project momentum.
+
+> **Flow:**  
+> - You must:
+>   - Analyze carefully and **research deeply**.
+>   - **Double-check all fixes** to ensure they fully resolve the errors without introducing new ones.
+>   - **Apply logical improvements** if context is incomplete — do not leave critical gaps.
+> - Return **All corrected files**:
+>   - No partial files, no `...imports...` placeholders.
+>   - Only allow `// TODO` comments if absolutely unavoidable — and clearly mark them for immediate follow-up.  
+> - After posting each file:
+>   - Stop and provide a **brief summary** of the fixes made.
+>   - Estimate the **percent complete** for the overall project error fixing.
+> - Wait for me to run **`cargo check`** again and supply the next error output.
+> 
+> **Requirements:**  
+> - Fix with **production-level caution**.
+> - Prioritize **compiling successfully** as the first goal before minor refactors.
+> - Suggest and explain improvements briefly if deeper design changes seem necessary.
+
+> **Trigger Command:**  
+> When I type **"j9 go"**, begin this flow.
+
+Update parts of j9 prompt. Adjust to give me all of the files that need fixing in one response. 
+Separate whole, complete files out into sections that I can copy independently. 
+Update j9 prompt from this guidance. Then stop and wait for me to cargo check.
+
+------------------------ prompt run log ------------
+
+transaction
+event_handler
+simulation
+utils
+main
+State
+local_simulator
+path_optimizer
+event_handler
+--------------
+
+
+
+-----------------
+cargo check
+run# 307. j9 go

@@ -47,8 +47,8 @@ for relative_path in file_paths:
         print(f"Path not found: {source_path}")
 
 # Write processed files to project_file_system.txt
-project_file_system_path = os.path.join(base_dir, "txtexport_flattened", "project_file_system.txt")
-with open(project_file_system_path, "w") as project_file:
-    project_file.write("**ULP 1.5 Project Files**\n")
+project_file_system_path = os.path.join(output_dir, "project_file_system.txt")
+with open(project_file_system_path, "w", encoding="utf-8") as project_file:
+    project_file.write("**ULP 1.5 Project Files**\n\n")
     project_file.write("\n".join(processed_files))
     print(f"Exported processed files to: {project_file_system_path}")

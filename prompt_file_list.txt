@@ -2,6 +2,6 @@
 /abis/
 /contracts/
 Cargo.toml
-general_guide.md
-ulp1.5.md
-prompt.md
+README.md
+j9.md
+.env
