@@ -14,10 +14,10 @@ use crate::utils::f64_to_wei;
 use ethers::{
     prelude::{Http, LocalWallet, Provider, SignerMiddleware},
     types::{Address, I256, U256},
-    // FIX Warning: Remove unused Units import
     utils::{format_units, parse_units},
 };
-use eyre::{eyre, Result, WrapErr};
+// FIX Warning: Remove unused WrapErr
+use eyre::{eyre, Result};
 use std::sync::Arc;
 use tracing::{debug, info, instrument, trace, warn};
 

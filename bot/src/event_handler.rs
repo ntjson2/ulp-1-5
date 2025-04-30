@@ -3,8 +3,6 @@
 use crate::bindings::{
     AerodromePool,
     VelodromeV2Pool,
-    // Add ContractCall type explicitly if needed, otherwise rely on inference
-    ContractCall,
 };
 use crate::state::{self, AppState, DexType};
 use crate::path_optimizer::find_top_routes;
@@ -18,7 +16,8 @@ use crate::utils::ToF64Lossy;
 
 use ethers::{
     abi::RawLog,
-    contract::EthLogDecode,
+    // FIX Warning: Remove unused ContractCall import
+    contract::{EthLogDecode},
     prelude::*,
     types::{Log, U64, I256, U256},
 };
@@ -120,20 +119,14 @@ pub async fn handle_log_event(
                          debug!(pool=%pool_address, dex=?dex_type, "Fetching reserves after swap...");
                          let timeout_duration = Duration::from_secs(s.config.fetch_timeout_secs.unwrap_or(10));
 
-                         // FIX E0716: Bind the ContractCall object *before* calling .call()
-                         // Define the type alias for the ContractCall explicitly
-                         type ReservesCall = ContractCall<SignerMiddleware<Provider<Http>, LocalWallet>, (U256, U256, U256)>;
-
-                         // Bind the appropriate pool method call to a variable
-                         let pool_call_binding: ReservesCall = if dex_type == DexType::VelodromeV2 {
+                         // Use type inference for the ContractCall instead of explicit alias
+                         let pool_call_binding = if dex_type == DexType::VelodromeV2 {
                              let pool = VelodromeV2Pool::new(pool_address, c.clone());
-                             pool.get_reserves() // This is the ContractCall object
+                             pool.get_reserves()
                          } else {
                              let pool = AerodromePool::new(pool_address, c.clone());
-                             pool.get_reserves() // This is the ContractCall object
+                             pool.get_reserves()
                          };
-
-                         // Now create the future from the binding
                          let pool_call_future = pool_call_binding.call();
 
 

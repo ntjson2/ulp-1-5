@@ -112,7 +112,7 @@ pub async fn submit_arbitrage_transaction(
 ) -> Result<TxHash> {
     info!("Attempting submission & monitoring");
     let config = &app_state.config;
-    let tx_hash: Option<TxHash>; // Remove mut
+    let tx_hash: Option<TxHash>;
 
     // --- Steps 1-8 (Prepare Tx Data & Sign) ---
     let gas_info = fetch_gas_price(client.clone(), config).await.wrap_err("ALERT: Failed gas price fetch pre-submission")?;
@@ -266,26 +266,8 @@ async fn submit_sequentially( config: &Config, _provider: &Provider<Http>, clien
         }
         Err(e) => {
             error!(error = ?e, "Public RPC submission failed.");
-            // FIX E0782: Add dyn keyword correctly
-            let middleware_error_context = match &e {
-                MiddlewareError::ProviderError(provider_error) => match provider_error {
-                   ProviderError::JsonRpcClientError(rpc_err) => { format!(" (RPC Error: {})", rpc_err) }
-                   ProviderError::HTTPError(http_err) => { format!(" (HTTP Error: {})", http_err) }
-                   _ => format!(" (Provider Error: {})", provider_error), // Add catch-all for provider errors
-                },
-                MiddlewareError::SignerError(_) => " (Signer Error)".to_string(),
-                MiddlewareError::NonceTooLow => " (NonceTooLow Error)".to_string(),
-                MiddlewareError::NonceTooHigh => " (NonceTooHigh Error)".to_string(),
-                MiddlewareError::GasPriceError => " (GasPrice Error)".to_string(),
-                MiddlewareError::GasError => " (Gas Error)".to_string(),
-                MiddlewareError::InsufficientFund => " (InsufficientFund Error)".to_string(),
-                MiddlewareError::InitializationError(_) => " (Initialization Error)".to_string(),
-                MiddlewareError::MissingData(_, _) => " (MissingData Error)".to_string(),
-                MiddlewareError::UnsupportedRPC => " (UnsupportedRPC Error)".to_string(),
-                MiddlewareError::CouldNotConvertTransaction => " (CouldNotConvertTransaction Error)".to_string(),
-                MiddlewareError::ForeignError(_) => " (Foreign Error)".to_string(),
-                 _ => "".to_string(), // Catch any other MiddlewareError variants
-             };
+             // FIX E0782: Simplify the match, use e.to_string()
+             let middleware_error_context = format!(" ({})", e.to_string());
             last_error = Some(eyre!(e).wrap_err(format!("Public RPC submission failed{}", middleware_error_context)));
         }
     }
