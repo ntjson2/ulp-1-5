@@ -44,7 +44,7 @@ pub struct Config {
     pub max_loan_amount_weth: f64,
     pub optimal_loan_search_iterations: u32,
     pub fetch_timeout_secs: Option<u64>, // Timeout for individual pool state fetches
-    pub enable_univ3_dynamic_sizing: bool, // <-- New flag (defaults to false)
+    pub enable_univ3_dynamic_sizing: bool, // Defaults to false
 
     // Gas Pricing Options
     pub max_priority_fee_per_gas_gwei: f64,
@@ -55,6 +55,11 @@ pub struct Config {
     // Transaction Submission Options
     pub private_rpc_url: Option<String>, // Primary private relay (e.g., Flashbots Protect, MEV-Share)
     pub secondary_private_rpc_url: Option<String>, // Secondary/fallback private relay
+
+    // Profitability & Slippage Control
+    pub min_profit_buffer_bps: u64, // Buffer in basis points (100ths of a percent)
+    pub min_profit_abs_buffer_wei_str: String, // Buffer in absolute wei (as string to handle large numbers)
+
 }
 
 // --- Parsing helpers ---
@@ -62,10 +67,8 @@ fn parse_address_env(var_name: &str) -> Result<Address> { let s = env::var(var_n
 fn parse_optional_address_env(var_name: &str) -> Result<Option<Address>> {
     match env::var(var_name) {
         Ok(s) if s.is_empty() => Ok(None),
-        // FIX E0521: Ensure error message construction doesn't capture non-'static var_name
         Ok(s) => s.parse().map(Some).map_err(|e| eyre!("Invalid optional address format for {}: {}", var_name.to_string(), e)),
         Err(env::VarError::NotPresent) => Ok(None),
-        // FIX E0521: Use eyre!(e).wrap_err(...)
         Err(e) => Err(eyre!(e).wrap_err(format!("Error checking env var {}", var_name))),
     }
 }
@@ -74,10 +77,8 @@ fn parse_f64_env(var_name: &str, default: f64) -> f64 { env::var(var_name).ok().
 fn parse_optional_f64_env(var_name: &str) -> Result<Option<f64>> {
     match env::var(var_name) {
         Ok(s) if s.is_empty() => Ok(None),
-        // FIX E0521: Ensure error message construction doesn't capture non-'static var_name
         Ok(s) => s.parse().map(Some).map_err(|e| eyre!("Invalid optional f64 format for {}: {}", var_name.to_string(), e)),
         Err(env::VarError::NotPresent) => Ok(None),
-        // FIX E0521: Use eyre!(e).wrap_err(...)
         Err(e) => Err(eyre!(e).wrap_err(format!("Error checking env var {}", var_name))),
     }
 }
@@ -86,10 +87,8 @@ fn parse_u64_env(var_name: &str, default: u64) -> u64 { env::var(var_name).ok().
 fn parse_optional_u64_env(var_name: &str) -> Result<Option<u64>> {
      match env::var(var_name) {
         Ok(s) if s.is_empty() => Ok(None),
-        // FIX E0521: Ensure error message construction doesn't capture non-'static var_name
         Ok(s) => s.parse().map(Some).map_err(|e| eyre!("Invalid optional u64 format for {}: {}", var_name.to_string(), e)),
         Err(env::VarError::NotPresent) => Ok(None),
-        // FIX E0521: Use eyre!(e).wrap_err(...)
         Err(e) => Err(eyre!(e).wrap_err(format!("Error checking env var {}", var_name))),
     }
 }
@@ -98,6 +97,13 @@ fn parse_bool_env(var_name: &str) -> bool {
     env::var(var_name)
         .map(|s| s.eq_ignore_ascii_case("true") || s == "1")
         .unwrap_or(false) // Default to false
+}
+// Helper to parse string env var with a default
+fn parse_string_env(var_name: &str, default: &str) -> String {
+    env::var(var_name).unwrap_or_else(|_| {
+        warn!("Using default string for {}: {}", var_name, default);
+        default.to_string()
+    })
 }
 
 
@@ -122,13 +128,17 @@ pub fn load_config() -> Result<Config> {
     let min_loan_amount_weth = parse_f64_env("MIN_LOAN_AMOUNT_WETH", 0.1); let max_loan_amount_weth = parse_f64_env("MAX_LOAN_AMOUNT_WETH", 100.0);
     let optimal_loan_search_iterations = parse_u32_env("OPTIMAL_LOAN_SEARCH_ITERATIONS", 10);
     let fetch_timeout_secs = parse_optional_u64_env("FETCH_TIMEOUT_SECS")?;
-    let enable_univ3_dynamic_sizing = parse_bool_env("ENABLE_UNIV3_DYNAMIC_SIZING"); // <-- Parse new flag
+    let enable_univ3_dynamic_sizing = parse_bool_env("ENABLE_UNIV3_DYNAMIC_SIZING");
 
     // --- Load Gas Vars ---
     let max_priority_fee_per_gas_gwei = parse_f64_env("MAX_PRIORITY_FEE_PER_GAS_GWEI", 0.01);
     let fallback_gas_price_gwei = parse_optional_f64_env("FALLBACK_GAS_PRICE_GWEI")?;
     let gas_limit_buffer_percentage = parse_u64_env("GAS_LIMIT_BUFFER_PERCENTAGE", 25); let min_flashloan_gas_limit = parse_u64_env("MIN_FLASHLOAN_GAS_LIMIT", 400_000);
     let chain_id = parse_optional_u64_env("CHAIN_ID")?;
+
+    // --- Load Profitability Vars ---
+    let min_profit_buffer_bps = parse_u64_env("MIN_PROFIT_BUFFER_BPS", 10); // Default 10 BPS (0.10%)
+    let min_profit_abs_buffer_wei_str = parse_string_env("MIN_PROFIT_ABS_BUFFER_WEI", "5000000000000"); // Default 0.000005 WETH equivalent (adjust based on typical gas costs)
 
     // --- Load Optional String Vars ---
     let private_rpc_url = env::var("PRIVATE_RPC_URL").ok(); let secondary_private_rpc_url = env::var("SECONDARY_PRIVATE_RPC_URL").ok();
@@ -140,9 +150,10 @@ pub fn load_config() -> Result<Config> {
         velo_router_addr, aerodrome_factory_addr, aerodrome_router_addr, weth_address, usdc_address,
         weth_decimals, usdc_decimals, deploy_executor, executor_bytecode_path, min_loan_amount_weth,
         max_loan_amount_weth, optimal_loan_search_iterations, fetch_timeout_secs,
-        enable_univ3_dynamic_sizing, // <-- Add to struct init
+        enable_univ3_dynamic_sizing,
         max_priority_fee_per_gas_gwei, fallback_gas_price_gwei,
         gas_limit_buffer_percentage, min_flashloan_gas_limit, private_rpc_url, secondary_private_rpc_url,
+        min_profit_buffer_bps, min_profit_abs_buffer_wei_str, // Add new fields
     };
     info!("✅ Config loaded."); debug!(?config); Ok(config)
 }

@@ -3,22 +3,16 @@
 // --- Imports ---
 use ethers::prelude::*;
 use ethers::providers::{Provider, StreamExt, Ws};
-// FIX Warning: Remove unused Block, Log, I256, U64, TxHash
 use ethers::types::{
-    Address, Filter, U256
+    Address, Filter, U256, H160, H256
 };
-// FIX Warning: Remove unused imports
-// use ethers::utils::{keccak256};
 use eyre::{eyre, Result, WrapErr};
 use std::{collections::HashSet, sync::Arc};
-// FIX Warning: Remove unused Mutex
 use tokio::time::{interval, timeout, Duration};
 use tokio::task::JoinHandle;
 use chrono::Utc;
 use futures_util::{future::join_all, FutureExt};
 use lazy_static::lazy_static;
-// FIX Warning: Remove unused instrument
-// FIX: Import trace macro
 use tracing::{debug, error, info, warn, Level, trace};
 use tracing_subscriber::{fmt, EnvFilter};
 
@@ -70,22 +64,21 @@ async fn main() -> Result<()> {
     info!("🔍 Fetching initial states..."); let mut tasks: Vec<JoinHandle<()>> = Vec::new(); let mut monitored = HashSet::new(); let fetch_timeout = Duration::from_secs(config.fetch_timeout_secs.unwrap_or(15));
     let mut factory_addresses_for_filter = vec![config.uniswap_v3_factory_addr, config.velodrome_v2_factory_addr]; if let Some(a) = config.aerodrome_factory_addr { factory_addresses_for_filter.push(a); }
 
-    // Fetch UniV3
+    // --- Fetch Initial UniV3 Pools ---
     if let Some((token_a, token_b)) = target_pair_filter {
-        let f = IUniswapV3Factory::new(config.uniswap_v3_factory_addr, client.clone());
+        let factory_addr = config.uniswap_v3_factory_addr;
+        let f = IUniswapV3Factory::new(factory_addr, client.clone());
         let fees = [100, 500, 3000, 10000];
         let (q0, q1) = if token_a < token_b { (token_a, token_b) } else { (token_b, token_a) };
         for fee in fees {
             match timeout(fetch_timeout, f.get_pool(q0, q1, fee).call()).await {
-                Ok(Ok(p)) if p != Address::zero() => {
-                    if monitored.insert(p) {
+                Ok(Ok(pool_addr)) if pool_addr != Address::zero() => {
+                    if monitored.insert(pool_addr) {
                         let client_c = client.clone();
                         let app_state_c = app_state.clone();
-                        // FIX E0373: Add move keyword
                         tasks.push(tokio::spawn(
-                            state::fetch_and_cache_pool_state(p, DexType::UniswapV3, client_c, app_state_c).map(move |res| {
-                                // Borrow p inside the move closure
-                                if let Err(e) = res { error!(pool=%p, dex=?DexType::UniswapV3, error=?e, "Spawned fetch state failed"); }
+                            state::fetch_and_cache_pool_state(pool_addr, DexType::UniswapV3, factory_addr, client_c, app_state_c).map(move |res| {
+                                if let Err(e) = res { error!(pool=%pool_addr, dex=?DexType::UniswapV3, error=?e, "Spawned initial fetch state failed"); }
                             })
                         ));
                     }
@@ -95,35 +88,43 @@ async fn main() -> Result<()> {
                 _ => {}
             }
         }
+    } else {
+        warn!("Target pair not configured, skipping initial UniV3 pool fetch.");
     }
-    // Fetch VeloV2
-    let vf = IVelodromeFactory::new(config.velodrome_v2_factory_addr, client.clone());
+
+    // --- Fetch Initial VelodromeV2 Pools ---
+    let velo_factory_addr = config.velodrome_v2_factory_addr;
+    let vf = IVelodromeFactory::new(velo_factory_addr, client.clone());
     match timeout(fetch_timeout * 2, vf.all_pools_length().call()).await {
-        Ok(Ok(len)) => fetch_velo_style_pools(DexType::VelodromeV2, &vf, len, &mut monitored, &mut tasks, client.clone(), app_state.clone()).await,
+        Ok(Ok(len)) => fetch_velo_style_pools(DexType::VelodromeV2, &vf, velo_factory_addr, len, &mut monitored, &mut tasks, client.clone(), app_state.clone()).await,
         Ok(Err(e)) => error!(dex = "VeloV2", error = ?e, "allPoolsLength RPC failed"),
         Err(_) => error!(dex = "VeloV2", "Timeout getting allPoolsLength"),
     }
-    // Fetch Aerodrome
-    if let Some(af_addr) = config.aerodrome_factory_addr {
-        let af = IAerodromeFactory::new(af_addr, client.clone());
+
+    // --- Fetch Initial Aerodrome Pools ---
+    if let Some(aero_factory_addr) = config.aerodrome_factory_addr {
+        let af = IAerodromeFactory::new(aero_factory_addr, client.clone());
         match timeout(fetch_timeout * 2, af.all_pools_length().call()).await {
-            Ok(Ok(len)) => fetch_aero_style_pools(&af, len, &mut monitored, &mut tasks, client.clone(), app_state.clone()).await,
+            Ok(Ok(len)) => fetch_aero_style_pools(&af, aero_factory_addr, len, &mut monitored, &mut tasks, client.clone(), app_state.clone()).await,
             Ok(Err(e)) => error!(dex = "Aero", error = ?e, "allPoolsLength RPC failed"),
             Err(_) => error!(dex = "Aero", "Timeout getting allPoolsLength"),
         }
     }
 
+    // --- Wait for Initial Fetches ---
     info!("Waiting initial fetch tasks ({})...", tasks.len());
     let join_results = timeout(Duration::from_secs(INITIAL_STATE_FETCH_TIMEOUT_SECS), join_all(tasks)).await;
     match join_results {
         Ok(results) => {
             let failed_count = results.iter().filter(|r| r.is_err()).count();
             if failed_count > 0 { warn!("{} initial pool fetch tasks failed.", failed_count); }
+            else { info!("All initial pool fetch tasks completed."); }
         }
         Err(_) => { warn!("Timeout waiting for initial pool fetch tasks to complete."); }
     }
     info!("✅ Initial fetch process complete. Pools loaded: {}", app_state.pool_states.len());
 
+    // --- Setup Event Filters ---
     let current_monitored_addrs: Vec<Address> = app_state.pool_states.iter().map(|e| *e.key()).collect();
     if current_monitored_addrs.is_empty() { warn!("No target pools found or fetched successfully during initial load. Swap monitoring might be ineffective."); }
     else { info!("Monitoring swaps for {} pools.", current_monitored_addrs.len()); }
@@ -131,9 +132,16 @@ async fn main() -> Result<()> {
     let swap_topics = vec![*UNI_V3_SWAP_TOPIC, *VELO_AERO_SWAP_TOPIC];
     let factory_topics = vec![*UNI_V3_POOL_CREATED_TOPIC, *VELO_AERO_POOL_CREATED_TOPIC];
 
-    let combined_addresses = current_monitored_addrs.into_iter().chain(factory_addresses_for_filter.into_iter()).collect::<Vec<_>>();
-    let combined_topics = swap_topics.into_iter().chain(factory_topics.into_iter()).collect::<Vec<_>>();
-    let combined_filter = Filter::new().address(combined_addresses).topic0(combined_topics);
+    let combined_addresses: Vec<H160> = current_monitored_addrs.into_iter()
+        .chain(factory_addresses_for_filter.into_iter())
+        .collect();
+    let combined_topics: Vec<H256> = swap_topics.into_iter()
+        .chain(factory_topics.into_iter())
+        .collect();
+
+    let combined_filter = Filter::new()
+        .address(combined_addresses)
+        .topic0(combined_topics);
 
     info!("Subscribing to event streams...");
     let mut block_stream = match provider_ws_arc.subscribe_blocks().await {
@@ -144,15 +152,19 @@ async fn main() -> Result<()> {
     };
     info!("✅ Subscribed.");
 
-    info!("🚦 Starting main loop..."); let mut health_check = interval(Duration::from_secs(EVENT_STREAM_HEALTH_CHECK_INTERVAL_SECS)); let mut last_block = Utc::now(); let mut last_log = Utc::now();
+    // --- Main Event Loop ---
+    info!("🚦 Starting main loop...");
+    let mut health_check = interval(Duration::from_secs(EVENT_STREAM_HEALTH_CHECK_INTERVAL_SECS));
+    let mut last_block_time = Utc::now();
+    let mut last_log_time = Utc::now();
 
     loop { tokio::select! { biased;
+        // --- Handle Log Events ---
         maybe_log = log_stream.next() => {
             match maybe_log {
                 Some(log) => {
-                    last_log = Utc::now();
-                    // FIX: Use imported trace macro
-                    trace!(tx_hash = ?log.transaction_hash, block = ?log.block_number, address = %log.address, "Received log");
+                    last_log_time = Utc::now();
+                    trace!(tx_hash = ?log.transaction_hash, block = ?log.block_number, address = %log.address, topics=?log.topics, "Received log");
                     let s = app_state.clone();
                     let c = client.clone();
                     let nm = nonce_manager.clone();
@@ -160,42 +172,47 @@ async fn main() -> Result<()> {
                         if let Err(e) = handle_log_event(log, s, c, nm).await { error!(error = ?e, "handle_log_event failed"); }
                     });
                 }
-                None => { error!("Log stream ended unexpectedly. Shutting down."); break; }
+                // FIX: Add ALERT prefix and specific stream name to error log
+                None => { error!("ALERT: Log stream subscription ended unexpectedly. WS connection may be lost. Shutting down."); break; }
             }
         },
+        // --- Handle Block Events ---
         maybe_block = block_stream.next() => {
             match maybe_block {
                  Some(block) => {
-                    last_block = Utc::now();
+                    last_block_time = Utc::now();
                     if let Some(n) = block.number {
-                        // FIX: Use imported trace macro
-                        trace!("Received block #{}", n.as_u64()); // Use as_u64 for trace
+                        trace!("Received block #{}", n.as_u64());
                         let s = app_state.clone();
                         tokio::spawn(async move {
                             if let Err(e) = handle_new_block(n, s).await { error!(block = n.as_u64(), error = ?e, "handle_new_block failed"); }
                         });
                     } else { warn!("Block received without number: {:?}", block.hash); }
                  }
-                 None => { error!("Block stream ended unexpectedly. Shutting down."); break; }
+                 // FIX: Add ALERT prefix and specific stream name to error log
+                 None => { error!("ALERT: Block stream subscription ended unexpectedly. WS connection may be lost. Shutting down."); break; }
              }
         },
+        // --- Health Check Timer ---
         _ = health_check.tick() => {
             let now = Utc::now();
-            let block_lag = (now - last_block).num_seconds();
-            let log_lag = (now - last_log).num_seconds();
+            let block_lag = (now - last_block_time).num_seconds();
+            let log_lag = (now - last_log_time).num_seconds();
             info!(block_lag = block_lag, log_lag = log_lag, pools = app_state.pool_states.len(), snapshots = app_state.pool_snapshots.len(), "🩺 Health");
             if block_lag > 180 || log_lag > 180 { warn!("High event stream lag detected (Block: {}s, Log: {}s). Streams might be stalled.", block_lag, log_lag); }
         },
+        // --- Handle Ctrl+C ---
         _ = tokio::signal::ctrl_c() => { info!("🔌 Shutdown signal received..."); break; },
     }}
     info!("🛑 Bot stopped."); Ok(())
 }
 
 
-/// Helper function to fetch pools for Velo-style factories.
+/// Helper function to fetch initial pools for Velo-style factories.
 async fn fetch_velo_style_pools<M: Middleware + 'static>(
     dex_type: DexType,
     factory_binding: &IVelodromeFactory<M>,
+    factory_addr: Address,
     pool_len: U256,
     monitored: &mut HashSet<Address>,
     tasks: &mut Vec<JoinHandle<()>>,
@@ -206,25 +223,31 @@ async fn fetch_velo_style_pools<M: Middleware + 'static>(
      let target_pair_opt = app_state.target_pair();
 
      for i in 0..pool_len.as_usize() {
-          match timeout(fetch_timeout, factory_binding.all_pools(U256::from(i)).call()).await {
+          let index = U256::from(i);
+          match timeout(fetch_timeout, factory_binding.all_pools(index).call()).await {
                Ok(Ok(pool_addr)) if pool_addr != Address::zero() => {
                     let client_c = client.clone();
-                    match timeout(fetch_timeout, VelodromeV2Pool::new(pool_addr, client_c).tokens().call()).await {
+                    let pool_binding = VelodromeV2Pool::new(pool_addr, client_c);
+                    match timeout(fetch_timeout, pool_binding.tokens().call()).await {
                          Ok(Ok((t0, t1))) => {
                               if state::is_target_pair_option(t0, t1, target_pair_opt) {
                                    if monitored.insert(pool_addr) {
                                         let client_clone = client.clone();
                                         let app_state_clone = app_state.clone();
                                         tasks.push(tokio::spawn(async move {
-                                             if let Err(e) = state::fetch_and_cache_pool_state(pool_addr, dex_type, client_clone, app_state_clone).await {
-                                                 error!(pool=%pool_addr, error=?e,"Spawned fetch state failed for Velo pool");
+                                             if let Err(e) = state::fetch_and_cache_pool_state(pool_addr, dex_type, factory_addr, client_clone, app_state_clone).await {
+                                                 error!(pool=%pool_addr, dex=?dex_type, error=?e,"Spawned fetch state failed for Velo-style pool");
                                              }
                                         }));
+                                   } else {
+                                       trace!(pool=%pool_addr, "Already monitoring pool.");
                                    }
+                              } else {
+                                  trace!(pool=%pool_addr, "Skipping non-target pair: {:?}/{:?}", t0, t1);
                               }
                          }
-                         Ok(Err(e)) => warn!(pool=%pool_addr, error=?e, dex=?dex_type, "Failed get_tokens RPC"),
-                         Err(_) => warn!(pool=%pool_addr, dex=?dex_type, "Timeout get_tokens"),
+                         Ok(Err(e)) => warn!(pool=%pool_addr, error=?e, dex=?dex_type, "Failed tokens() RPC"),
+                         Err(_) => warn!(pool=%pool_addr, dex=?dex_type, "Timeout tokens()"),
                     }
                }
                Ok(Ok(_)) => {}
@@ -237,6 +260,7 @@ async fn fetch_velo_style_pools<M: Middleware + 'static>(
 /// Helper function specifically for Aerodrome factory type.
 async fn fetch_aero_style_pools(
     factory_binding: &IAerodromeFactory<SignerMiddleware<Provider<Http>, LocalWallet>>,
+    factory_addr: Address,
     pool_len: U256,
     monitored: &mut HashSet<Address>,
     tasks: &mut Vec<JoinHandle<()>>,
@@ -248,25 +272,31 @@ async fn fetch_aero_style_pools(
     let target_pair_opt = app_state.target_pair();
 
      for i in 0..pool_len.as_usize() {
-          match timeout(fetch_timeout, factory_binding.all_pools(U256::from(i)).call()).await {
+          let index = U256::from(i);
+          match timeout(fetch_timeout, factory_binding.all_pools(index).call()).await {
                Ok(Ok(pool_addr)) if pool_addr != Address::zero() => {
                     let client_c = client.clone();
-                    match timeout(fetch_timeout, AerodromePool::new(pool_addr, client_c).tokens().call()).await {
+                    let pool_binding = AerodromePool::new(pool_addr, client_c);
+                    match timeout(fetch_timeout, pool_binding.tokens().call()).await {
                          Ok(Ok((t0, t1))) => {
                               if state::is_target_pair_option(t0, t1, target_pair_opt) {
                                    if monitored.insert(pool_addr) {
                                         let client_clone = client.clone();
                                         let app_state_clone = app_state.clone();
                                         tasks.push(tokio::spawn(async move {
-                                             if let Err(e) = state::fetch_and_cache_pool_state(pool_addr, dex_type, client_clone, app_state_clone).await {
-                                                 error!(pool=%pool_addr, error=?e,"Spawned fetch state failed for Aero pool");
+                                             if let Err(e) = state::fetch_and_cache_pool_state(pool_addr, dex_type, factory_addr, client_clone, app_state_clone).await {
+                                                 error!(pool=%pool_addr, dex=?dex_type, error=?e,"Spawned fetch state failed for Aero pool");
                                              }
                                         }));
+                                   } else {
+                                        trace!(pool=%pool_addr, "Already monitoring pool.");
                                    }
+                              } else {
+                                  trace!(pool=%pool_addr, "Skipping non-target pair: {:?}/{:?}", t0, t1);
                               }
                          }
-                         Ok(Err(e)) => warn!(pool=%pool_addr, error=?e, dex=?dex_type, "Failed get_tokens RPC"),
-                         Err(_) => warn!(pool=%pool_addr, dex=?dex_type, "Timeout get_tokens"),
+                         Ok(Err(e)) => warn!(pool=%pool_addr, error=?e, dex=?dex_type, "Failed tokens() RPC"),
+                         Err(_) => warn!(pool=%pool_addr, dex=?dex_type, "Timeout tokens()"),
                     }
                }
                Ok(Ok(_)) => {}

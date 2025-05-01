@@ -1,3 +1,9 @@
-Task tracking: 
-j8 Task: MU2 Task 5.2 (Error Resolution) - Step 1 Complete
-j8... 
+ULP 1.5 Arbitrage Bot - Project Transfer. Study attached all_files_combined.txt
+Note prompt.md, z1.1.md
+All other file references in attached doc scan and deeply research. 
+Next steps should be Anvil setup
+z1.1 go
+
+Fix simulation.rs macro issues, type errors, and missing field lookups.
+Fix state.rs borrow checker errors.
+Fix main.rs and event_handler.rs function call arguments.

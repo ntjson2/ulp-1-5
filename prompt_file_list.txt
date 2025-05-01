@@ -4,4 +4,7 @@
 Cargo.toml
 README.md
 j9.md
+z1.1.md
+PROJECT_FEASIBILITY.md
+prompt.md
 .env

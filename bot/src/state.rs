@@ -5,14 +5,12 @@ use crate::bindings::{AerodromePool, UniswapV3Pool, VelodromeV2Pool};
 use crate::config::Config;
 use dashmap::DashMap;
 use ethers::{
-    prelude::*, // Add prelude for common types/traits
+    prelude::*,
     types::{Address, U256, U64},
 };
-// FIX E0599: Import WrapErr trait
 use eyre::{eyre, Result, WrapErr};
 use std::{str::FromStr, sync::Arc};
 use tokio::time::{timeout, Duration};
-// FIX Warning: Removed debug
 use tracing::{error, info, instrument, trace, warn};
 
 // --- Enums / Structs ---
@@ -21,6 +19,7 @@ pub enum DexType {
     UniswapV3,
     VelodromeV2,
     Aerodrome,
+    #[allow(dead_code)] // Allow dead code for this variant as it's for robustness
     Unknown,
 }
 impl DexType {
@@ -50,10 +49,12 @@ pub struct PoolState {
     pub pool_address: Address,
     pub dex_type: DexType,
     pub token0: Address,
+    #[allow(dead_code)] // Allow dead code for this field, kept for context/future use
     pub token1: Address,
     pub uni_fee: Option<u32>,
     pub velo_stable: Option<bool>,
-    pub t0_is_weth: Option<bool>,
+    pub t0_is_weth: Option<bool>, // Flag indicating if token0 is WETH
+    pub factory: Address,
 }
 #[derive(Debug, Clone)]
 pub struct PoolSnapshot {
@@ -70,57 +71,72 @@ pub struct PoolSnapshot {
 #[derive(Debug, Clone)]
 pub struct AppState {
     pub config: Config,
-    pub pool_states: Arc<DashMap<Address, PoolState>>,
-    pub pool_snapshots: Arc<DashMap<Address, PoolSnapshot>>,
+    pub pool_states: Arc<DashMap<Address, PoolState>>, // Detailed, less frequently updated state
+    pub pool_snapshots: Arc<DashMap<Address, PoolSnapshot>>, // Minimal, frequently updated state (hot-cache)
+    // Commonly used config values cached for quick access
     pub weth_address: Address,
     pub usdc_address: Address,
     pub weth_decimals: u8,
     pub usdc_decimals: u8,
-    pub velo_router_addr: Option<Address>,
-    pub aero_router_addr: Option<Address>,
-    pub uni_quoter_addr: Option<Address>,
+    // FIX: Remove unused fields causing dead_code warnings
+    // pub velo_router_addr: Option<Address>,
+    // pub aero_router_addr: Option<Address>,
+    // pub uni_quoter_addr: Option<Address>,
 }
 
 // --- AppState Impl ---
 impl AppState {
     pub fn new(config: Config) -> Self {
         Self {
+            // Cache frequently accessed config values
             weth_address: config.weth_address,
             usdc_address: config.usdc_address,
             weth_decimals: config.weth_decimals,
             usdc_decimals: config.usdc_decimals,
-            velo_router_addr: Some(config.velo_router_addr),
-            aero_router_addr: config.aerodrome_router_addr,
-            uni_quoter_addr: Some(config.quoter_v2_address),
-            config,
+            // FIX: Remove initialization of unused fields
+            // velo_router_addr: Some(config.velo_router_addr),
+            // aero_router_addr: config.aerodrome_router_addr,
+            // uni_quoter_addr: Some(config.quoter_v2_address),
+            // Store the full config
+            config, // Keep the full config accessible
+            // Initialize state maps
             pool_states: Default::default(),
             pool_snapshots: Default::default(),
         }
     }
+
+    /// Returns the target token pair (WETH, USDC) sorted by address.
+    /// Returns None if addresses are not configured (zero address).
     pub fn target_pair(&self) -> Option<(Address, Address)> {
-        if !self.weth_address.is_zero() && !self.usdc_address.is_zero() {
+        if self.weth_address.is_zero() || self.usdc_address.is_zero() {
+            warn!("WETH or USDC address is zero in config, cannot determine target pair.");
+            None
+        } else {
+            // Always return addresses sorted low->high
             if self.weth_address < self.usdc_address {
                 Some((self.weth_address, self.usdc_address))
             } else {
                 Some((self.usdc_address, self.weth_address))
             }
-        } else {
-            warn!("WETH/USDC zero");
-            None
         }
     }
 }
 
 // --- Helper Functions ---
+
+/// Fetches the detailed state for a given pool and caches it in `pool_states`.
+/// Also creates an initial snapshot and caches it in `pool_snapshots`.
+/// Handles different DEX types.
 #[instrument(skip_all, fields(pool=%pool_addr, dex=?dex_type), level="info")]
 pub async fn fetch_and_cache_pool_state(
     pool_addr: Address,
-    dex_type: DexType, // is Copy now
+    dex_type: DexType,
+    factory_addr: Address, // Pass the factory address that created this pool
     client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
     app_state: Arc<AppState>,
 ) -> Result<()> {
     info!("Fetching state...");
-    let weth_addr = app_state.weth_address;
+    let weth_addr = app_state.weth_address; // Cache WETH address locally
     let timeout_dur = Duration::from_secs(app_state.config.fetch_timeout_secs.unwrap_or(15));
 
     // Define the async block that performs the fetches
@@ -132,22 +148,35 @@ pub async fn fetch_and_cache_pool_state(
                 let token0_call = pool.token_0();
                 let token1_call = pool.token_1();
                 let fee_call = pool.fee();
+
                 let slot0_fut = slot0_call.call();
                 let token0_fut = token0_call.call();
                 let token1_fut = token1_call.call();
                 let fee_fut = fee_call.call();
-                let (slot0_res, token0_res, token1_res, fee_res) =
-                    tokio::try_join!(slot0_fut, token0_fut, token1_fut, fee_fut)?;
+
+                let (slot0_res, token0_res, token1_res, fee_res) = tokio::try_join!(
+                    slot0_fut, token0_fut, token1_fut, fee_fut
+                )?;
+
                 let (sqrtp_u160, tick, ..) = slot0_res;
                 let (t0, t1, f) = (token0_res, token1_res, fee_res);
                 let is_t0_weth = t0 == weth_addr;
                 let sqrtp = U256::from(sqrtp_u160);
-                let ps = PoolState { pool_address: pool_addr, dex_type, token0: t0, token1: t1, uni_fee: Some(f), velo_stable: None, t0_is_weth: Some(is_t0_weth) };
-                let sn = PoolSnapshot { pool_address: pool_addr, dex_type, token0: t0, token1: t1, reserve0: None, reserve1: None, sqrt_price_x96: Some(sqrtp), tick: Some(tick), last_update_block: None };
+
+                let ps = PoolState {
+                    pool_address: pool_addr, dex_type, token0: t0, token1: t1,
+                    uni_fee: Some(f), velo_stable: None, t0_is_weth: Some(is_t0_weth),
+                    factory: factory_addr,
+                };
+                let sn = PoolSnapshot {
+                    pool_address: pool_addr, dex_type, token0: t0, token1: t1,
+                    reserve0: None, reserve1: None, sqrt_price_x96: Some(sqrtp),
+                    tick: Some(tick), last_update_block: None,
+                };
                 Ok((ps, sn))
             }
             DexType::VelodromeV2 | DexType::Aerodrome => {
-                let (reserves_call, token0_call, token1_call, stable_call) =
+                 let (reserves_call, token0_call, token1_call, stable_call) =
                     if dex_type == DexType::VelodromeV2 {
                         let p = VelodromeV2Pool::new(pool_addr, client.clone());
                         (p.get_reserves(), p.token_0(), p.token_1(), p.stable())
@@ -161,13 +190,24 @@ pub async fn fetch_and_cache_pool_state(
                 let token1_fut = token1_call.call();
                 let stable_fut = stable_call.call();
 
-                let (r, t0, t1, s) =
-                    tokio::try_join!(reserves_fut, token0_fut, token1_fut, stable_fut)?;
-                // FIX E0308: Use correct tuple type based on ABI (uint256, uint256, uint256)
-                let (r0, r1, _block_timestamp_last): (U256, U256, U256) = r;
+                let (reserves_res, token0_res, token1_res, stable_res) = tokio::try_join!(
+                    reserves_fut, token0_fut, token1_fut, stable_fut
+                )?;
+
+                let (r0, r1, _block_timestamp_last): (U256, U256, U256) = reserves_res;
+                let (t0, t1, s) = (token0_res, token1_res, stable_res);
                 let is_t0_weth = t0 == weth_addr;
-                let ps = PoolState { pool_address: pool_addr, dex_type, token0: t0, token1: t1, uni_fee: None, velo_stable: Some(s), t0_is_weth: Some(is_t0_weth) };
-                let sn = PoolSnapshot { pool_address: pool_addr, dex_type, token0: t0, token1: t1, reserve0: Some(r0), reserve1: Some(r1), sqrt_price_x96: None, tick: None, last_update_block: None };
+
+                let ps = PoolState {
+                    pool_address: pool_addr, dex_type, token0: t0, token1: t1,
+                    uni_fee: None, velo_stable: Some(s), t0_is_weth: Some(is_t0_weth),
+                    factory: factory_addr,
+                };
+                let sn = PoolSnapshot {
+                    pool_address: pool_addr, dex_type, token0: t0, token1: t1,
+                    reserve0: Some(r0), reserve1: Some(r1), sqrt_price_x96: None,
+                    tick: None, last_update_block: None,
+                };
                 Ok((ps, sn))
             }
             DexType::Unknown => Err(eyre!("Cannot fetch state for Unknown DEX type")),
@@ -184,11 +224,10 @@ pub async fn fetch_and_cache_pool_state(
         }
         Ok(Err(e)) => {
             error!(pool = %pool_addr, error = ?e, "Fetch state failed");
-            // FIX E0599: Use eyre::WrapErr trait method correctly
             Err(e).wrap_err("Pool state fetch logic failed")
         }
         Err(_) => {
-            error!(pool = %pool_addr, "Fetch state timeout");
+            error!(pool = %pool_addr, timeout_secs = timeout_dur.as_secs(), "Fetch state timeout");
             Err(eyre!(
                 "Timeout fetching pool state for {}",
                 pool_addr
@@ -197,6 +236,8 @@ pub async fn fetch_and_cache_pool_state(
     }
 }
 
+/// Helper function to check if two token addresses match a target pair, ignoring order.
+/// If target is None, always returns true.
 pub fn is_target_pair_option(
     a0: Address,
     a1: Address,
