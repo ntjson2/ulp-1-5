@@ -21,6 +21,16 @@ cargo run --bin ulp1_5
 anvil --fork-url https://mainnet.optimism.io
 ```
 
+## Compile huff contract
+``` bash
+huffc ./contracts/ArbitrageExecutor.huff -b > ./build/ArbitrageExecutor.bin
+```
+
+## error check huff contract (verbose output)
+``` bash
+huffc ./contracts/ArbitrageExecutor.huff -v
+```
+
 ### Deploy Contract
 ```bash
 cast send --rpc-url http://127.0.0.1:8545 --private-key <YOUR_ANVIL_PK> --create <BYTECODE_HEX_STRING>
