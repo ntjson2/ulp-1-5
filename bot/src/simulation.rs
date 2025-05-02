@@ -1,4 +1,6 @@
 // src/simulation.rs
+//! Handles off-chain simulation of arbitrage routes to determine profitability
+//! and optimal loan amounts before attempting on-chain execution.
 
 use crate::bindings::{
     quoter_v2 as quoter_v2_bindings,
@@ -10,7 +12,7 @@ use crate::encoding::encode_user_data;
 use crate::gas::estimate_flash_loan_gas;
 use crate::state::{AppState, DexType, PoolSnapshot};
 use crate::path_optimizer::RouteCandidate;
-use crate::utils::f64_to_wei;
+use crate::utils::{f64_to_wei, ToF64Lossy};
 use ethers::{
     prelude::{Http, LocalWallet, Provider, SignerMiddleware},
     types::{Address, I256, U256},
@@ -20,12 +22,12 @@ use eyre::{eyre, Result, WrapErr};
 use std::sync::Arc;
 use tracing::{debug, error, info, instrument, trace, warn};
 
-// Percentage of pool reserve to consider as max loan size for V2/Aero pools
-const V2_RESERVE_PERCENTAGE_LIMIT: u64 = 5; // e.g., 5%
+// Configuration Constants for Simulation
+const V2_RESERVE_PERCENTAGE_LIMIT: u64 = 5; // Max loan size as % of V2 pool reserve
 
-// --- simulate_swap function ---
+/// Simulates a single swap on a DEX using appropriate on-chain query methods.
 #[allow(clippy::too_many_arguments)]
-#[instrument(skip(app_state, client), level = "trace", fields(dex = %dex_type, amount_in = %amount_in_wei))]
+#[instrument(skip(app_state, client), level = "trace", fields(dex = %dex_type, token_in = %token_in, token_out = %token_out, amount_in = %amount_in_wei))]
 pub async fn simulate_swap(
     app_state: Arc<AppState>,
     client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
@@ -33,49 +35,35 @@ pub async fn simulate_swap(
     token_in: Address,
     token_out: Address,
     amount_in_wei: U256,
-    // Parameters needed specifically for certain DEX types
-    is_stable_route: Option<bool>, // For Velo/Aero
-    uni_pool_fee: Option<u32>,    // For UniV3
-    factory_addr: Option<Address>, // For Velo/Aero routes
+    is_stable_route: Option<bool>,
+    uni_pool_fee: Option<u32>,
+    factory_addr: Option<Address>,
 ) -> Result<U256> {
-    trace!("Simulating swap...");
+    // ... (implementation remains the same) ...
+    trace!("Simulating single swap...");
     match dex_type {
         DexType::UniswapV3 => {
             let quoter_address = app_state.config.quoter_v2_address;
             let quoter = QuoterV2::new(quoter_address, client);
             let fee = uni_pool_fee.ok_or_else(|| eyre!("Missing UniV3 pool fee for simulation"))?;
-            let params = quoter_v2_bindings::QuoteExactInputSingleParams {
-                token_in,
-                token_out,
-                amount_in: amount_in_wei,
-                fee,
-                sqrt_price_limit_x96: U256::zero(),
-            };
-            let quote_result = quoter.quote_exact_input_single(params).call().await?;
+            let params = quoter_v2_bindings::QuoteExactInputSingleParams { token_in, token_out, amount_in: amount_in_wei, fee, sqrt_price_limit_x96: U256::zero(), };
+            trace!(?params, "Calling QuoterV2 quoteExactInputSingle");
+            let quote_result = quoter.quote_exact_input_single(params).call().await .wrap_err_with(|| format!("QuoterV2 simulation failed for pair {token_in:?} -> {token_out:?}"))?;
+            debug!(amount_out = %quote_result.0, "QuoterV2 simulation successful");
             Ok(quote_result.0)
         }
         DexType::VelodromeV2 | DexType::Aerodrome => {
-            let router_address = if dex_type == DexType::VelodromeV2 {
-                app_state.config.velo_router_addr
-            } else {
-                app_state.config.aerodrome_router_addr
-                    .ok_or_else(|| eyre!("Aerodrome router address missing for simulation"))?
-            };
-             let factory_address = factory_addr.ok_or_else(|| eyre!("Missing Factory address for Velo/Aero route"))?;
+            let router_address = if dex_type == DexType::VelodromeV2 { app_state.config.velo_router_addr }
+                                 else { app_state.config.aerodrome_router_addr.ok_or_else(|| eyre!("Aerodrome router address missing for simulation"))? };
+            let factory_address = factory_addr.ok_or_else(|| eyre!("Missing Factory address for Velo/Aero route simulation"))?;
             let stable = is_stable_route.ok_or_else(|| eyre!("Missing stability flag for Velo/Aero simulation"))?;
-
             let router = VelodromeRouter::new(router_address, client);
-            let routes = vec![velo_router_bindings::Route {
-                from: token_in,
-                to: token_out,
-                stable,
-                factory: factory_address,
-            }];
-
+            let routes = vec![velo_router_bindings::Route { from: token_in, to: token_out, stable, factory: factory_address, }];
+            trace!(?routes, amount_in = %amount_in_wei, "Calling VelodromeRouter getAmountsOut");
             match router.get_amounts_out(amount_in_wei, routes).call().await {
-                Ok(amounts) if amounts.len() >= 2 => Ok(amounts[1]),
+                Ok(amounts) if amounts.len() >= 2 => { debug!(amounts_out = ?amounts, "Velo/Aero getAmountsOut simulation successful"); Ok(amounts[1]) },
                 Ok(amounts) => Err(eyre!("Invalid amounts array length returned from getAmountsOut: {}", amounts.len())),
-                Err(e) => Err(eyre!(e).wrap_err("getAmountsOut RPC call failed")),
+                Err(e) => Err(eyre!(e).wrap_err("Velo/Aero getAmountsOut RPC call failed")),
             }
         }
         DexType::Unknown => Err(eyre!("Cannot simulate swap for Unknown DEX type")),
@@ -83,120 +71,47 @@ pub async fn simulate_swap(
 }
 
 
-// --- Profit Calculation Helper ---
+/// Calculates the estimated net profit for a given route and loan amount.
 #[allow(clippy::too_many_arguments)]
 #[instrument(skip(app_state, client, route), level = "debug", fields( loan_amount_wei = %amount_in_wei ))]
 pub async fn calculate_net_profit(
     app_state: Arc<AppState>,
     client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
-    route: &RouteCandidate, // Now contains factory addresses
+    route: &RouteCandidate,
     amount_in_wei: U256,
     gas_price_gwei: f64,
     gas_limit_buffer_percentage: u64,
     min_flashloan_gas_limit: u64,
 ) -> Result<I256> {
+    // ... (implementation remains the same) ...
     let config = &app_state.config;
-    let loan_token = route.token_in;
-    let intermediate_token = route.token_out;
-
-    trace!("Calculating net profit...");
-
-    // --- Simulate Swap A (Loan Token -> Intermediate Token) ---
-    debug!(dex = %route.buy_dex_type, token_in = %loan_token, token_out = %intermediate_token, amount_in = %amount_in_wei, "Simulating Swap A (Buy)");
-    let amount_out_intermediate = simulate_swap(
-        app_state.clone(),
-        client.clone(),
-        route.buy_dex_type,
-        loan_token,
-        intermediate_token,
-        amount_in_wei,
-        route.buy_pool_stable,
-        route.buy_pool_fee,
-        // FIX: Use factory address from RouteCandidate
-        Some(route.buy_pool_factory),
-    )
-    .await
-    .wrap_err("Swap A simulation failed")?;
-
-    if amount_out_intermediate.is_zero() {
-        debug!("Swap A simulation returned zero output. Route unprofitable.");
-        return Ok(I256::min_value());
-    }
-    trace!(amount_out_intermediate = %amount_out_intermediate, "Swap A successful.");
-
-    // --- Simulate Swap B (Intermediate Token -> Loan Token) ---
-     debug!(dex = %route.sell_dex_type, token_in = %intermediate_token, token_out = %loan_token, amount_in = %amount_out_intermediate, "Simulating Swap B (Sell)");
-    let final_amount_out_loan_token = simulate_swap(
-        app_state.clone(),
-        client.clone(),
-        route.sell_dex_type,
-        intermediate_token,
-        loan_token,
-        amount_out_intermediate,
-        route.sell_pool_stable,
-        route.sell_pool_fee,
-        // FIX: Use factory address from RouteCandidate
-        Some(route.sell_pool_factory),
-    )
-    .await
-    .wrap_err("Swap B simulation failed")?;
-
-    trace!(final_amount_out_loan_token = %final_amount_out_loan_token, "Swap B successful.");
-
-    // --- Calculate Gross Profit ---
-    let gross_profit_wei =
-        I256::from_raw(final_amount_out_loan_token) - I256::from_raw(amount_in_wei);
-
+    let loan_token = route.token_in; let intermediate_token = route.token_out;
+    trace!("Calculating net profit for route: {:?} -> {:?}", route.buy_dex_type, route.sell_dex_type);
+    let amount_out_intermediate = match simulate_swap( app_state.clone(), client.clone(), route.buy_dex_type, loan_token, intermediate_token, amount_in_wei, route.buy_pool_stable, route.buy_pool_fee, Some(route.buy_pool_factory), ).await { Ok(amount) => amount, Err(e) => { warn!(error=?e, "Swap A simulation failed, assuming unprofitable."); return Ok(I256::min_value()); } };
+    if amount_out_intermediate.is_zero() { debug!("Swap A simulation returned zero output. Route unprofitable."); return Ok(I256::min_value()); }
+    trace!(amount_out_intermediate = %amount_out_intermediate, "Swap A simulation successful.");
+    let final_amount_out_loan_token = match simulate_swap( app_state.clone(), client.clone(), route.sell_dex_type, intermediate_token, loan_token, amount_out_intermediate, route.sell_pool_stable, route.sell_pool_fee, Some(route.sell_pool_factory), ).await { Ok(amount) => amount, Err(e) => { warn!(error=?e, "Swap B simulation failed, assuming unprofitable."); return Ok(I256::min_value()); } };
+    trace!(final_amount_out_loan_token = %final_amount_out_loan_token, "Swap B simulation successful.");
+    let gross_profit_wei = I256::from_raw(final_amount_out_loan_token) - I256::from_raw(amount_in_wei);
     debug!(gross_profit_wei = %gross_profit_wei, "Gross profit calculated.");
-
-    if gross_profit_wei <= I256::zero() {
-        return Ok(gross_profit_wei);
-    }
-
-    // --- Estimate Gas Cost ---
-    let gas_price_wei_str = format!("{:.18}", gas_price_gwei);
-    let gas_price_wei: U256 = parse_units(&gas_price_wei_str, "gwei")?.into();
+    if gross_profit_wei <= I256::zero() { return Ok(gross_profit_wei); }
+    let gas_price_wei_str = format!("{:.18}", gas_price_gwei); let gas_price_wei: U256 = parse_units(&gas_price_wei_str, "gwei")?.into();
     trace!(gas_price_gwei=%gas_price_gwei, gas_price_wei=%gas_price_wei, "Converted gas price");
-
-    let effective_router_addr = if route.buy_dex_type.is_velo_style() || route.sell_dex_type.is_velo_style() {
-         if route.buy_dex_type == DexType::Aerodrome || route.sell_dex_type == DexType::Aerodrome {
-             config.aerodrome_router_addr.ok_or_else(|| eyre!("Aero router needed for encoding"))?
-         } else {
-             config.velo_router_addr
-         }
-     } else {
-         config.velo_router_addr
-     };
-
-    let user_data_for_gas_est = encode_user_data(
-        route.buy_pool_addr, route.sell_pool_addr, intermediate_token,
-        route.zero_for_one_a, route.buy_dex_type.is_velo_style(), route.sell_dex_type.is_velo_style(),
-        effective_router_addr, U256::zero(), U256::zero(),
-    )?;
-
-    let gas_estimate_units = estimate_flash_loan_gas(
-        client.clone(), config.balancer_vault_address,
-        config.arb_executor_address.ok_or_else(|| eyre!("Executor address missing for gas estimate"))?,
-        loan_token, amount_in_wei, user_data_for_gas_est,
-    ).await?;
+    let effective_router_addr = if route.buy_dex_type.is_velo_style() || route.sell_dex_type.is_velo_style() { if route.buy_dex_type == DexType::Aerodrome || route.sell_dex_type == DexType::Aerodrome { config.aerodrome_router_addr.ok_or_else(|| eyre!("Aero router needed for encoding"))? } else { config.velo_router_addr } } else { config.velo_router_addr };
+    let user_data_for_gas_est = encode_user_data( route.buy_pool_addr, route.sell_pool_addr, intermediate_token, route.zero_for_one_a, route.buy_dex_type.is_velo_style(), route.sell_dex_type.is_velo_style(), effective_router_addr, U256::zero(), U256::zero(), )?;
+    let gas_estimate_units = match estimate_flash_loan_gas( client.clone(), config.balancer_vault_address, config.arb_executor_address.ok_or_else(|| eyre!("Executor address missing for gas estimate"))?, loan_token, amount_in_wei, user_data_for_gas_est, ).await { Ok(est) => est, Err(e) => { warn!(error=?e, "Gas estimation failed, assuming high cost (route likely unprofitable)."); return Ok(I256::min_value()); } };
     trace!(gas_estimate_units = %gas_estimate_units, "Initial gas estimate received.");
-
-    let buffered_gas_limit = gas_estimate_units * (100 + gas_limit_buffer_percentage) / 100;
-    let final_gas_limit = std::cmp::max(buffered_gas_limit, U256::from(min_flashloan_gas_limit));
+    let buffered_gas_limit = gas_estimate_units * (100 + gas_limit_buffer_percentage) / 100; let final_gas_limit = std::cmp::max(buffered_gas_limit, U256::from(min_flashloan_gas_limit));
     trace!(buffered_gas_limit = %buffered_gas_limit, min_flashloan_gas_limit = %min_flashloan_gas_limit, final_gas_limit = %final_gas_limit, "Calculated final gas limit");
-
     let gas_cost_wei = gas_price_wei * final_gas_limit;
     trace!(gas_cost_wei = %gas_cost_wei, "Total gas cost calculated.");
-
-    // --- Calculate Net Profit ---
     let net_profit_wei = gross_profit_wei - I256::from_raw(gas_cost_wei);
-
     debug!(net_profit_wei = %net_profit_wei, "Net profit calculated.");
     Ok(net_profit_wei)
 }
 
 
-// --- Optimal Loan Amount Search Function ---
+/// Searches for the optimal flash loan amount for a given route candidate.
 #[allow(clippy::too_many_arguments)]
 #[instrument(skip_all, level = "info", fields( route = ?route ))]
 pub async fn find_optimal_loan_amount(
@@ -209,169 +124,62 @@ pub async fn find_optimal_loan_amount(
 ) -> Result<Option<(U256, I256)>> {
     // ... (implementation remains the same) ...
     info!("Searching optimal loan amount...");
-    let config = &app_state.config;
-    let mut best_loan_amount_wei = U256::zero();
-    let mut max_net_profit_wei = I256::min_value();
-
-    let min_loan_weth = config.min_loan_amount_weth;
-    let config_max_loan_weth = config.max_loan_amount_weth;
-    let min_loan_wei = f64_to_wei(min_loan_weth, config.weth_decimals as u32)?;
-    let config_max_loan_wei = f64_to_wei(config_max_loan_weth, config.weth_decimals as u32)?;
-
-    let dynamic_max_loan_wei = calculate_dynamic_max_loan(
-        config_max_loan_wei, buy_pool_snapshot, sell_pool_snapshot,
-        route.token_in, config,
-    );
-    let dynamic_max_loan_weth = format_units(dynamic_max_loan_wei, config.weth_decimals as i32)?
-        .parse::<f64>()
-        .unwrap_or(config_max_loan_weth);
-
-    info!(
-        config_max_weth = config_max_loan_weth, dynamic_max_weth = dynamic_max_loan_weth,
-        "Max loan amount considered (WETH)"
-    );
-    let effective_max_loan_wei = std::cmp::min(config_max_loan_wei, dynamic_max_loan_wei);
-    let effective_max_loan_weth = dynamic_max_loan_weth.min(config_max_loan_weth);
-    let search_min_weth = min_loan_weth;
-    let search_max_weth = effective_max_loan_weth;
-    let iterations = config.optimal_loan_search_iterations;
-
-    if min_loan_wei >= effective_max_loan_wei || iterations < 1 || search_min_weth <= 0.0 || search_max_weth <= search_min_weth {
-        warn!(
-            min_weth = search_min_weth, eff_max_weth = search_max_weth, iterations = iterations,
-            "Invalid or zero-width search range for optimal loan. Skipping search."
-        );
-        return Ok(None);
-    }
-    info!(
-        search_range_weth = format!("{:.4} - {:.4}", search_min_weth, search_max_weth),
-        iterations = iterations, "Starting optimal loan search..."
-    );
-
+    let config = &app_state.config; let mut best_loan_amount_wei = U256::zero(); let mut max_net_profit_wei = I256::min_value();
+    let min_loan_weth = config.min_loan_amount_weth; let config_max_loan_weth = config.max_loan_amount_weth;
+    let min_loan_wei = f64_to_wei(min_loan_weth, config.weth_decimals as u32)?; let config_max_loan_wei = f64_to_wei(config_max_loan_weth, config.weth_decimals as u32)?;
+    let dynamic_max_loan_wei = calculate_dynamic_max_loan( config_max_loan_wei, buy_pool_snapshot, sell_pool_snapshot, route.token_in, config, );
+    let dynamic_max_loan_weth = dynamic_max_loan_wei.to_f64_lossy() / 10f64.powi(config.weth_decimals as i32);
+    info!( config_max_weth = config_max_loan_weth, dynamic_max_weth = format!("{:.4}", dynamic_max_loan_weth), "Max loan amount limits (WETH)" );
+    let effective_max_loan_wei = std::cmp::min(config_max_loan_wei, dynamic_max_loan_wei); let effective_max_loan_weth = dynamic_max_loan_weth.min(config_max_loan_weth);
+    let search_min_weth = min_loan_weth; let search_max_weth = effective_max_loan_weth; let iterations = config.optimal_loan_search_iterations;
+    if min_loan_wei >= effective_max_loan_wei || iterations < 1 || search_min_weth <= 0.0 || search_max_weth <= search_min_weth { warn!( min_weth = search_min_weth, eff_max_weth = search_max_weth, iterations, "Invalid or zero-width search range for optimal loan. Skipping search." ); return Ok(None); }
+    info!( search_range_weth = format!("{:.4} - {:.4}", search_min_weth, search_max_weth), iterations, "Starting optimal loan search..." );
     let mut simulation_tasks = vec![];
     for i in 0..iterations {
-        let ratio = if iterations <= 1 { 0.5 } else { i as f64 / (iterations - 1) as f64 };
-        let current_loan_amount_weth = search_min_weth + (search_max_weth - search_min_weth) * ratio;
-        let current_loan_amount_wei = match f64_to_wei(current_loan_amount_weth, config.weth_decimals as u32) {
-            Ok(amount) => amount, Err(_) => continue,
-        };
-        if current_loan_amount_wei < min_loan_wei || current_loan_amount_wei > effective_max_loan_wei || current_loan_amount_wei.is_zero() {
-            trace!(%current_loan_amount_wei, "Skipping amount outside effective range.");
-            continue;
-        }
-
-        let task_client = client.clone();
-        let task_app_state = app_state.clone();
-        let task_route = route.clone();
-        let task_gas_limit_buffer = config.gas_limit_buffer_percentage;
-        let task_min_gas_limit = config.min_flashloan_gas_limit;
-
-        simulation_tasks.push(tokio::spawn(async move {
-            let profit_result = calculate_net_profit(
-                task_app_state, task_client, &task_route, current_loan_amount_wei,
-                gas_price_gwei, task_gas_limit_buffer, task_min_gas_limit,
-            ).await;
-            (current_loan_amount_wei, profit_result)
-        }));
+        let ratio = if iterations <= 1 { 0.5 } else { i as f64 / (iterations - 1) as f64 }; let current_loan_amount_weth = search_min_weth + (search_max_weth - search_min_weth) * ratio;
+        let current_loan_amount_wei = match f64_to_wei(current_loan_amount_weth, config.weth_decimals as u32) { Ok(amount) => amount, Err(e) => { warn!(amount_f64=%current_loan_amount_weth, error=?e, "Failed f64_to_wei conversion, skipping amount"); continue; } };
+        if current_loan_amount_wei < min_loan_wei || current_loan_amount_wei > effective_max_loan_wei || current_loan_amount_wei.is_zero() { trace!(%current_loan_amount_wei, "Skipping amount outside effective range."); continue; }
+        let task_client = client.clone(); let task_app_state = app_state.clone(); let task_route = route.clone(); let task_gas_limit_buffer = config.gas_limit_buffer_percentage; let task_min_gas_limit = config.min_flashloan_gas_limit;
+        simulation_tasks.push(tokio::spawn(async move { let profit_result = calculate_net_profit( task_app_state, task_client, &task_route, current_loan_amount_wei, gas_price_gwei, task_gas_limit_buffer, task_min_gas_limit, ).await; (current_loan_amount_wei, profit_result) }));
     }
-
-    let results = futures_util::future::join_all(simulation_tasks).await;
-    debug!("Collected {} simulation results.", results.len());
-
-    for join_result in results {
-        match join_result {
-            Ok((amount_wei, Ok(profit_wei))) => {
-                 trace!(loan_amount_wei=%amount_wei, net_profit_wei=%profit_wei, "Profit calculated for amount.");
-                if profit_wei > max_net_profit_wei {
-                    max_net_profit_wei = profit_wei;
-                    best_loan_amount_wei = amount_wei;
-                }
-            }
-            Ok((amount_wei, Err(e))) => {
-                warn!(loan_amount_wei=%amount_wei, error=?e, "Error calculating profit for specific loan amount");
-            }
-            Err(e) => {
-                error!(error=?e, "Simulation task failed");
-            }
-        }
-    }
-
-    if max_net_profit_wei > I256::zero() {
-        let best_loan_weth = format_units(best_loan_amount_wei, config.weth_decimals as i32)?;
-        let profit_weth = format_units(max_net_profit_wei.into_raw(), config.weth_decimals as i32)?;
-        info!(
-            optimal_loan_weth = %best_loan_weth, max_net_profit_weth = %profit_weth,
-            "🎉 Optimal loan amount found!"
-        );
-        Ok(Some((best_loan_amount_wei, max_net_profit_wei)))
-    } else {
-        info!("No profitable loan amount found within the search range.");
-        Ok(None)
-    }
+    let results = futures_util::future::join_all(simulation_tasks).await; debug!("Collected {} simulation results.", results.len());
+    for join_result in results { match join_result { Ok((amount_wei, Ok(profit_wei))) => { trace!(loan_amount_wei=%amount_wei, net_profit_wei=%profit_wei, "Profit calculated for amount."); if profit_wei > max_net_profit_wei { max_net_profit_wei = profit_wei; best_loan_amount_wei = amount_wei; } } Ok((amount_wei, Err(e))) => { warn!(loan_amount_wei=%amount_wei, error=?e, "Error calculating profit for specific loan amount"); } Err(e) => { error!(error=?e, "Simulation task failed"); } } }
+    if max_net_profit_wei > I256::zero() { let best_loan_weth_str = format_units(best_loan_amount_wei, config.weth_decimals as i32)?; let profit_weth_str = format_units(max_net_profit_wei.into_raw(), config.weth_decimals as i32)?; info!( optimal_loan_weth = %best_loan_weth_str, max_net_profit_weth = %profit_weth_str, "🎉 Optimal loan amount found!" ); Ok(Some((best_loan_amount_wei, max_net_profit_wei))) }
+    else { info!("No profitable loan amount found within the search range."); Ok(None) }
 }
 
 
-/// Calculates dynamic max loan amount based on V2/Aero reserves.
+/// Calculates a dynamic maximum loan amount based primarily on V2/Aero pool reserves.
+// FIX: Remove non-existent 'sell_pool_snapshot' from skip list
 #[instrument(level="debug", skip(buy_pool_snapshot))]
 fn calculate_dynamic_max_loan(
     config_max_loan_wei: U256,
     buy_pool_snapshot: Option<&PoolSnapshot>,
-    _sell_pool_snapshot: Option<&PoolSnapshot>,
+    _sell_pool_snapshot: Option<&PoolSnapshot>, // Mark unused
     loan_token: Address,
     config: &Config,
 ) -> U256 {
     // ... (implementation remains the same) ...
     trace!("Calculating dynamic max loan based on pool depth...");
     let mut dynamic_max_wei = config_max_loan_wei;
-
     if let Some(buy_snap) = buy_pool_snapshot {
         match buy_snap.dex_type {
             DexType::VelodromeV2 | DexType::Aerodrome => {
-                let reserve_option = if buy_snap.token0 == loan_token {
-                    buy_snap.reserve0
-                } else if buy_snap.token1 == loan_token {
-                    buy_snap.reserve1
-                } else { None };
-
+                let reserve_option = if buy_snap.token0 == loan_token { buy_snap.reserve0 } else if buy_snap.token1 == loan_token { buy_snap.reserve1 } else { None };
                 if let Some(reserve) = reserve_option {
-                    if !reserve.is_zero() {
-                        let limit_wei = reserve * U256::from(V2_RESERVE_PERCENTAGE_LIMIT) / U256::from(100);
-                        dynamic_max_wei = std::cmp::min(dynamic_max_wei, limit_wei);
-                        trace!(
-                            pool = %buy_snap.pool_address, dex = %buy_snap.dex_type.to_string(),
-                            reserve = %reserve, limit_pct = V2_RESERVE_PERCENTAGE_LIMIT, limit_wei = %limit_wei,
-                            "Applied V2/Aero depth limit based on loan token reserve."
-                        );
-                    } else {
-                        warn!(pool=%buy_snap.pool_address, dex=%buy_snap.dex_type.to_string(), "Loan token reserve is zero, cannot borrow.");
-                        dynamic_max_wei = U256::zero();
-                    }
-                } else {
-                    error!(pool=%buy_snap.pool_address, %loan_token, token0=%buy_snap.token0, token1=%buy_snap.token1, "Loan token not found in V2 pool snapshot reserves!");
-                    dynamic_max_wei = U256::zero();
-                }
+                    if !reserve.is_zero() { let limit_wei = reserve * U256::from(V2_RESERVE_PERCENTAGE_LIMIT) / U256::from(100); dynamic_max_wei = std::cmp::min(dynamic_max_wei, limit_wei); trace!( pool = %buy_snap.pool_address, dex = %buy_snap.dex_type.to_string(), reserve = %reserve, limit_pct = V2_RESERVE_PERCENTAGE_LIMIT, limit_wei = %limit_wei, "Applied V2/Aero depth limit based on loan token reserve." ); }
+                    else { warn!(pool=%buy_snap.pool_address, dex=%buy_snap.dex_type.to_string(), "Loan token reserve is zero, cannot borrow."); dynamic_max_wei = U256::zero(); }
+                } else { error!(pool=%buy_snap.pool_address, %loan_token, token0=%buy_snap.token0, token1=%buy_snap.token1, "Loan token not found in V2 pool snapshot reserves!"); dynamic_max_wei = U256::zero(); }
             }
             DexType::UniswapV3 => {
-                if config.enable_univ3_dynamic_sizing {
-                    warn!(pool = %buy_snap.pool_address, "UniV3 dynamic loan sizing ENABLED but NOT IMPLEMENTED. Accurate sizing requires tick liquidity analysis. Using configured max loan as the upper bound for now.");
-                    trace!("TODO: Implement UniV3 tick liquidity analysis for dynamic sizing.");
-                } else {
-                    trace!(pool = %buy_snap.pool_address, "UniV3 dynamic sizing disabled by config. Using configured max loan as upper bound.");
-                }
+                if config.enable_univ3_dynamic_sizing { warn!(pool = %buy_snap.pool_address, "UniV3 dynamic loan sizing ENABLED but NOT IMPLEMENTED. Accurate sizing requires tick liquidity analysis. Using configured max loan as the upper bound for now."); trace!("TODO: Implement UniV3 tick liquidity analysis for dynamic sizing."); }
+                else { trace!(pool = %buy_snap.pool_address, "UniV3 dynamic sizing disabled by config. Using configured max loan as upper bound."); }
             }
-            DexType::Unknown => {
-                warn!(pool = %buy_snap.pool_address, "Cannot apply dynamic sizing for Unknown DEX type.");
-            }
+            DexType::Unknown => { warn!(pool = %buy_snap.pool_address, "Cannot apply dynamic sizing for Unknown DEX type."); }
         }
-    } else {
-        warn!("Buy pool snapshot missing, cannot apply dynamic sizing based on pool depth. Using configured max loan.");
-    }
-
+    } else { warn!("Buy pool snapshot missing, cannot apply dynamic sizing based on pool depth. Using configured max loan."); }
     let final_dynamic_max_wei = std::cmp::min(dynamic_max_wei, config_max_loan_wei);
-    if final_dynamic_max_wei < config_max_loan_wei {
-        debug!(dynamic_max_wei = %final_dynamic_max_wei, "Dynamic depth limit applied.");
-    } else {
-        trace!(dynamic_max_wei = %final_dynamic_max_wei, "Using config max loan (or less) as effective limit.");
-    }
+    if final_dynamic_max_wei < config_max_loan_wei { debug!(dynamic_max_wei = %final_dynamic_max_wei, "Dynamic depth limit applied."); }
+    else { trace!(dynamic_max_wei = %final_dynamic_max_wei, "Using config max loan (or less) as effective limit."); }
     final_dynamic_max_wei
 }

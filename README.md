@@ -31,7 +31,7 @@ huffc ./contracts/ArbitrageExecutor.huff -b > ./build/ArbitrageExecutor.bin
 huffc ./contracts/ArbitrageExecutor.huff -v
 ```
 
-### Deploy Contract
+### Deploy Contract (note secret.env)
 ```bash
 cast send --rpc-url http://127.0.0.1:8545 --private-key <YOUR_ANVIL_PK> --create <BYTECODE_HEX_STRING>
 ```
