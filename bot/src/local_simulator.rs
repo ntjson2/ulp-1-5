@@ -180,7 +180,7 @@ pub async fn trigger_v2_swap(
 pub async fn trigger_v3_swap(
     sim_env: &SimEnv,
     pool_addr: Address,
-    pool_binding: &crate::bindings::UniswapV3Pool<AnvilClient>,
+    pool_binding: &crate::bindings::UniswapV3Pool<AnvilClient>, // Binding type
     recipient: Address,
     zero_for_one: bool,
     amount_specified: I256,
@@ -191,7 +191,7 @@ pub async fn trigger_v3_swap(
     warn!("V3 swap trigger assumes prerequisites met.");
 
     // Create ContractCall object by calling the method on the binding
-    let swap_call = pool_binding.swap(
+    let swap_call: ContractCall<_, _> = pool_binding.swap( // Explicit type annotation might help clarity
         recipient,
         zero_for_one,
         amount_specified,
@@ -199,7 +199,7 @@ pub async fn trigger_v3_swap(
         data,
     );
     // Access the internal transaction field (.tx) and convert it
-    let tx_request: TransactionRequest = swap_call.tx.clone().into(); // THIS LINE FIXES E0599/E0308
+    let tx_request: TransactionRequest = swap_call.tx.clone().into();
 
     apply_send_latency().await;
 
@@ -296,25 +296,22 @@ pub async fn run_simulation_scenario(sim_env: Arc<SimEnv>) -> Result<()> {
 
     // Corrected pattern matching for Result<Option<Result<Log, WsError>>>
     match tokio::time::timeout(Duration::from_secs(30), stream.next()).await {
-        Ok(Some(log_result)) => {
-            // Stream yielded an item which is Result<Log, WsError>
-            match log_result {
-                Ok(log) => { // THIS LINE FIXES E0308
-                    info!("Received simulated log: {:?}", log.transaction_hash);
-                    apply_read_latency().await;
-                    warn!("Actual bot logic simulation based on event is NOT YET IMPLEMENTED.");
-                }
-                Err(e) => { // Stream produced an error
-                    warn!("Error receiving log from stream: {:?}", e);
-                }
-            }
+        Ok(Some(log_result)) => { // Stream yielded an item (Result<Log, WsError>)
+             match log_result { // Check the inner Result
+                  Ok(log) => { // Successfully received a log
+                     info!("Received simulated log: {:?}", log.transaction_hash);
+                     apply_read_latency().await;
+                     warn!("Actual bot logic simulation based on event is NOT YET IMPLEMENTED.");
+                  }
+                  Err(e) => { // Stream produced an error
+                     warn!("Error receiving log from stream: {:?}", e);
+                  }
+             }
         }
-        Ok(None) => {
-            // Stream ended gracefully (returned None)
-            warn!("Simulated event stream ended gracefully.");
+        Ok(None) => { // Stream ended gracefully (returned None)
+             warn!("Simulated event stream ended gracefully.");
         }
-        Err(_elapsed) => {
-            // Timeout occurred
+        Err(_elapsed) => { // Timeout occurred
             warn!("Timeout waiting for simulated event.");
         }
     }
