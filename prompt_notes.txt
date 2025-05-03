@@ -1,3 +1,10 @@
+
+
+Give me a "prompt.md" prompt for me to pass into another Google AI Studio chat instance. The purpose  of the chat would be to transfer all  the knowledge from this project to another chat. It would include the project history, notes, j9, z1.1 prompts, goals, past, current and future states, goals. I will then pass in a text file of all of the project code files, your prompt.md (that you make from this) followed by a z1.1 to start the new chat session.
+
+----------------------------
+
+
 Double check current system for compatibility, errors, etc. Only give fully functional file with consideration to breaking changes, recent functional changes and future direction.
 Go, continue: bundling file changes into one whole functioning file, no partial files or snippets, i.e. ... (imports) ...
 Todo comments ok as long as you remember to return to them. This strategy is called A6.

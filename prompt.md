@@ -1,102 +1,115 @@
-# ULP 1.5 Arbitrage Bot - Project Transfer & Continuation Prompt
+# ULP 1.5 Arbitrage Bot - Project Context Transfer
 
-## 1. Project Goal & Vision
+## 1. Purpose of this Prompt
 
-The ultimate goal of ULP 1.5 is to develop a highly performant and profitable arbitrage bot operating across multiple Layer 2 (L2) networks. It leverages Balancer V2 flash loans for capital efficiency and executes atomic arbitrage trades using a custom, gas-optimized Huff contract (`ArbitrageExecutor.huff`).
+This prompt provides the necessary context and instructions to continue development on the ULP 1.5 Arbitrage Bot project. You are taking over from a previous session. Your primary goal is to understand the project's current state, goals, code structure, and established development workflows (`z1.1` and `j9` protocols) based on the information herein and the accompanying `all_files_combined.txt` file.
 
-## 2. Project History & Pivot
+**Prioritize the instructions and definitions within *this* `prompt.md` file.** The `all_files_combined.txt` file contains the project's code history, previous notes, and older protocol definitions, which should be used as reference and context, but superseded by this document where definitions conflict (especially for `z1.1`).
 
-*   **Initial Vision:** Aimed for very high-frequency trading ($40k+/day target) potentially requiring advanced infrastructure (e.g., co-location).
-*   **Pivot ("Scalable Core"):** The strategy shifted to first building a robust, reliable, and efficient core system deployable on standard cloud infrastructure. This core system is designed to be scalable for future performance enhancements.
+## 2. Project Overview
 
-## 3. Current Phase Goals
+*   **Goal:** Develop a high-performance arbitrage bot (ULP 1.5) capable of executing flash loan-based arbitrage opportunities across Layer 2 DEXs (initially focusing on Uniswap V3 and Velodrome V2 / Aerodrome style pools on Optimism/Base).
+*   **Core Strategy:** Utilize Balancer V2 flash loans as the capital source and a custom, gas-optimized Huff contract (`ArbitrageExecutor.huff`) for atomic execution of the arbitrage (swap A -> swap B -> repay loan + profit check).
+*   **Key Technologies:** Rust, Tokio, ethers-rs, Huff, Balancer V2, Uniswap V3, Velodrome V2 / Aerodrome.
 
-*   **Phase 1 (Current Focus):** Achieve reliable $400-$800/day profit using flash loans ($10k-$500k range) on standard infrastructure. Prove the core logic and execution flow.
-*   **Phase 2 (Future):** Scale towards the original $40k+/day vision by leveraging the core architecture, potentially incorporating ultra-low latency data/execution paths, larger capital, more complex routing, and broader L2/DEX support.
+## 3. Input Files Provided
 
-## 4. Core Architecture & Technology
+You will receive the following *after* this prompt:
 
-*   **Language/Runtime:** Rust using `tokio` for asynchronous operations.
-*   **Blockchain Interaction:** `ethers-rs` library for interacting with Ethereum-compatible L2 networks.
-*   **Data Source:** WebSocket (`ws`) subscriptions to node RPC endpoints for real-time `Swap` and `PoolCreated` events. HTTP (`http`) endpoint used for signing client and potentially some state lookups.
-*   **State Management (`state.rs`):**
-    *   `AppState`: Central, shared state wrapped in `Arc`. Contains configuration, contract instances, and maps for pool data.
-    *   `PoolState` (DashMap): Stores quasi-static pool details fetched on startup or discovery (DEX type, tokens, fees, stability flag).
-    *   `PoolSnapshot` (DashMap): Acts as an in-memory "hot-cache" storing frequently updated data derived from events (reserves, sqrtPrice, tick). Crucial for low-latency pathfinding.
-*   **Arbitrage Pipeline:**
-    1.  **Event Handling (`event_handler.rs`):** Listens for `Swap` and `PoolCreated` events. Updates `PoolSnapshot` hot-cache immediately upon `Swap`. Spawns non-blocking tasks (`check_for_arbitrage`) for further processing. Handles `PoolCreated` by fetching and caching full pool state.
-    2.  **Pathfinding (`path_optimizer.rs`):** Triggered after a `Swap` potentially changes prices. Reads *only* from the `PoolSnapshot` hot-cache to quickly compare the price of the updated pool against other cached pools. Identifies potential 2-way (A->B->A) arbitrage routes exceeding a basic percentage threshold. Generates `RouteCandidate` structs.
-    3.  **Simulation (`simulation.rs`):** Evaluates promising `RouteCandidate`s in spawned tasks. Uses RPC calls (`QuoterV2` for UniV3, Router `getAmountsOut` for Velo/Aero) to get accurate swap simulations. Performs dynamic loan sizing based on V2/Aero reserves (from snapshots) capped by config. Estimates gas costs (`eth_estimateGas`) and calculates net profit.
-    4.  **Transaction (`transaction.rs`):** If simulation shows profit, this module constructs and submits the transaction. Encodes `userData` including swap details, profit threshold (`minProfitWei`), and a unique `salt` nonce for replay protection. Fetches EIP-1559 gas prices. Calculates final gas limit. Uses `NonceManager` for sequential nonce handling. Submits transaction via private relays (Alchemy/Flashbots preferred) with public RPC fallback. Monitors transaction confirmation status.
-*   **On-Chain Executor (`ArbitrageExecutor.huff` v2.3.0):**
-    *   Receives Balancer V2 flash loan (`receiveFlashLoan`).
-    *   Decodes `userData` passed from the bot.
-    *   **Salt Nonce Guard:** Checks if the `salt` in `userData` has been seen before (using `sload` on a mapping) to prevent replays; reverts if seen. Marks the salt as seen (`sstore`) if new.
-    *   Performs the two swaps (Swap A -> Swap B) on specified pools (UniV3 or Velo-style). Handles routing logic differences between DEX types.
-    *   **Profit Check:** Verifies `final_token0_balance >= loan_amount + minProfitWei` (where `minProfitWei` comes from `userData`). Reverts if check fails.
-    *   Approves Balancer Vault to pull the repayment amount (`loan_amount + fee(0)`) only if all checks pass.
-    *   Returns control to Balancer Vault. Atomicity ensures the entire sequence reverts if any step fails or checks don't pass.
+1.  `all_files_combined.txt`: Contains the complete source code for all relevant project files (`.rs`, `.huff`, `Cargo.toml`, `.env`, `README.md`, etc.), concatenated together. It also contains historical notes, previous prompt definitions, and status updates. **Use this primarily for code reference and historical context.**
+2.  `prompt.md` (This file): Contains the **current** instructions, protocol definitions, status, and goals. **This file takes precedence over definitions found in `all_files_combined.txt`.**
 
-## 5. Current Implementation Details
+**Action:** Process both this `prompt.md` and the contents of `all_files_combined.txt` to build your understanding of the project.
 
-*   **Target L2s:** Optimism, Base (with ABIs/logic primarily based on Optimism Velodrome V2, reused for Base Aerodrome).
-*   **Target DEXs:** Uniswap V3, Velodrome V2, Aerodrome.
-*   **Target Pair:** WETH/USDC (Addresses and decimals configured in `.env`).
-*   **Flash Loans:** Balancer V2 (Assumed 0 fee).
-*   **Executor Features:** Includes profit check and salt nonce guard.
+## 4. Development Workflow Protocols
 
-## 6. Configuration (`.env`, `config.rs`)
+All development **must** follow one of the two protocols defined below:
 
-*   Network RPC URLs (WS, HTTP)
-*   Private Key
-*   Contract Addresses (Factories, Routers, Executor, Tokens, Balancer Vault, Quoter)
-*   Token Decimals
-*   Deployment Options (Deploy executor or use existing address)
-*   Optimization Parameters (Loan amounts, search iterations, timeouts)
-*   Gas Settings (Max priority fee, fallback, buffer, minimum limit)
-*   Private Relay URLs
+---
 
-## 7. Testing Strategy
+### 4.1. `z1.1` Protocol (Revised: Multi-File Task Output)
 
-*   Primary testing method relies on local network forks using **Foundry's Anvil**.
-*   Fork a target L2 (e.g., `anvil --fork-url <OPTIMISM_RPC>`).
-*   Configure `.env` to point to the local Anvil instance (`http://127.0.0.1:8545`).
-*   Deploy the `ArbitrageExecutor.huff` contract to the Anvil fork (either manually via `cast send --create` or automatically via bot config).
-*   Run the bot against the Anvil fork.
-*   Trigger `Swap` events on the fork using `cast send` against relevant pool/router contracts to simulate market activity and observe the bot's reaction (event detection, pathfinding, simulation, transaction submission attempts against Anvil).
-*   Use Anvil's tracing (`cast run --debug` or `--steps-tracing`) to verify Huff contract execution logic (guards, swaps, profit check).
+*   **Purpose:** Complete **one full task** at a time. A task might involve creating a new feature, refactoring a module, updating documentation, etc.
+*   **Behavior:**
+    *   Focuses on completing **one discrete development task** per interaction cycle.
+    *   If the user prompt contains multiple independent tasks, address only **one task** before stopping.
+    *   A single task **may require modifications to multiple files**.
+*   **Output Requirements:**
+    *   For each completed task, output the **complete and functional contents** of **every file modified** for that task.
+    *   **Maximum 10 files** per response. If a task modifies more than 10 files, list the first 10 and note that others were modified.
+    *   **No partials or code snippets.** Do not use `...imports...`, `...code...`, etc.
+    *   `// TODO` comments are allowed only if non-critical and planned for a future step.
+    *   Reflect awareness of breaking changes, recent updates, and project direction.
+*   **After Each Task (Outputting 1 to 10 Files):**
+    *   Stop and provide:
+        *   A **brief summary** of the overall task completed.
+        *   An **estimated percent complete** for the entire project.
+    *   Wait for the next user instruction.
+*   **Trigger:** User types **`z1.1 go`**.
 
-## 8. Current Project Status (End of Previous Session)
+---
 
-*   **Compilation:** The codebase **compiles successfully** (`cargo check` passes).
-*   **Warnings:** Two acceptable warnings remain:
-    *   `dead_code` for `DexType::Unknown` variant (kept for robustness).
-    *   `unused_field` for `PoolState::token1` (kept for context).
-*   **Functionality:** Core logic for event handling, pathfinding, simulation (with dynamic V2 sizing), transaction submission (with private relay support), and on-chain execution (with guards) is implemented.
+### 4.2. `j9` Protocol (Error Correction)
 
-## 9. Immediate Next Task
+*   **Purpose:** Fix compilation errors reported by `cargo check`, `cargo build`, or `cargo test`.
+*   **Trigger:** User provides the complete compiler error output and the command **`j9 go`**.
+*   **Action:** Analyze errors, determine fixes for **all** reported errors in the batch.
+*   **Output:** Return the **complete contents** of **every file** modified (up to 10 files per response) to fix the errors.
+*   **Per-File Summary:** *After* the code block for *each* modified file, stop and provide:
+    *   `File Updated: [path/to/filename.ext]`
+    *   `Task Summary: [Brief description of fixes applied *within that specific file* for the current error batch.]`
+*   **Overall Batch Summary:** After all modified files and their summaries, provide:
+    *   `Estimated Percent Complete (Current Batch): [Percentage for fixing the current set of errors.]`
+*   **Wait:** Wait for the user to run the check/build/test again or provide further instructions.
 
-*   **MU2 Task 5.3 (Testing & Refinement) - Enhance `README.md` with detailed Anvil Testing Procedures.**
-    *   Document specific `cast send` commands or test scenarios needed to verify the following on an Anvil fork:
-        *   Event detection (`Swap`, `PoolCreated`) and corresponding state updates (`PoolSnapshot`, `PoolState`).
-        *   Pathfinding logic correctly identifying routes based on simulated price changes.
-        *   Simulation accuracy compared to actual swap results on Anvil.
-        *   Dynamic loan sizing behavior (V2/Aero reserve limits, UniV3 config limits).
-        *   Transaction submission flow (using public submission against Anvil).
-        *   Huff contract execution correctness via Anvil tracing/debugging (verifying profit guard, salt guard, swap execution).
+---
 
-## 10. Subsequent Tasks
+## 5. Current Project Status (as of transfer)
 
-*   Perform the actual Anvil testing based on the procedures documented in the README.
-*   Implement more robust transaction monitoring (beyond basic confirmation) and potentially nonce error recovery/resynchronization strategies.
-*   Refine the `minProfitWei` buffer calculation in `transaction.rs`.
-*   (Lower Priority) Implement accurate UniV3 dynamic loan sizing based on tick liquidity.
-*   (Lower Priority) Add support for more DEXs (e.g., Ramses on Arbitrum).
-*   (Lower Priority) Integrate external alerting mechanisms for success/failure/errors.
+*   **Core Logic:** Implemented for state management (`state.rs`), event handling (`event_handler.rs`), pathfinding (`path_optimizer.rs`), simulation (`simulation.rs`), and transaction submission/monitoring (`transaction.rs`). Supports UniV3 and Velo/Aero style pools.
+*   **Configuration:** Handled via `.env` and `config.rs`. Includes network, keys, addresses, gas settings, profitability buffers, and health checks.
+*   **Huff Executor:** `ArbitrageExecutor.huff` implemented with core swap logic, profit check, and salt nonce guard. Successfully compiled recently after fixing opcode/label issues.
+*   **Testing:**
+    *   `README.md` updated with detailed Anvil testing procedures.
+    *   Local simulation framework (`local_simulator.rs`) exists.
+    *   Integration test file (`tests/integration_test.rs`) created with tests for setup, basic swap triggers, and a *sequential* simulation of the full arbitrage cycle. Placeholder tests for direct Huff contract verification exist.
+*   **Compilation:** `cargo check` passes cleanly (ignoring an allowed `unexpected_cfgs` warning). `huffc` compiles the Huff contract successfully.
+*   **Recent Activity:** Primarily focused on fixing Huff compilation errors, implementing the sequential integration test, and refining configuration/health checks.
+*   **Estimated Overall Completion:** ~89% (Core implementation complete, basic sequential testing structure in place, needs full test execution, hardening, and deployment prep).
 
-## 11. Interaction Instructions
+## 6. Key Files Overview
 
-*   Please review this context.
-*   The immediate goal is to work on **Task 9: Enhance `README.md` with Anvil Testing Procedures.**
-*   If errors arise during development or testing, we can revert to the structured "j9 go" error-fixing process if helpful.
-*   Provide complete file contents when modifications are requested.
+*   `bot/src/main.rs`: Main entry point, event loop, provider setup.
+*   `bot/src/config.rs`: Loads configuration from `.env`.
+*   `bot/src/state.rs`: Defines `AppState`, `PoolState`, `PoolSnapshot`, `DexType`. Handles state fetching/caching.
+*   `bot/src/event_handler.rs`: Processes incoming block/log events, updates state, triggers arbitrage checks.
+*   `bot/src/path_optimizer.rs`: Finds potential arbitrage routes based on cached snapshots.
+*   `bot/src/simulation.rs`: Simulates route profitability off-chain, finds optimal loan amount.
+*   `bot/src/transaction.rs`: Constructs, signs, submits, and monitors arbitrage transactions. Includes `NonceManager`.
+*   `bot/src/local_simulator.rs`: Framework for interacting with local Anvil fork (used by tests).
+*   `bot/tests/integration_test.rs`: Integration tests using Anvil.
+*   `contracts/ArbitrageExecutor.huff`: Huff implementation of the flash loan executor.
+*   `abis/`: Directory containing JSON ABI files for bindings.
+*   `Cargo.toml`: Project dependencies and features.
+*   `.env`: User-specific configuration (keys, RPC URLs, addresses).
+*   `README.md`: Project documentation, setup, testing instructions.
+
+## 7. Next Steps / Goals
+
+*   **Immediate:** Execute the integration tests defined in `tests/integration_test.rs` against Anvil to verify runtime behavior. Debug any failures. (User action required).
+*   **Near-Term:**
+    *   Refine error handling and add more specific logging across modules.
+    *   Implement more robust nonce error recovery/resynchronization if needed.
+    *   Consider adding basic external alerting integration (e.g., simple webhook on success/failure/panic).
+*   **Lower Priority / Future:**
+    *   Implement accurate UniV3 dynamic loan sizing based on tick liquidity.
+    *   Add support for more DEXs (e.g., Curve, SushiSwap, other L2 DEXs).
+    *   Optimize gas usage further in Rust and Huff code.
+    *   Develop deployment scripts/configuration (e.g., Docker, systemd).
+    *   Implement advanced monitoring and alerting dashboard.
+
+## 8. Initial Instruction
+
+1.  Acknowledge that you have processed this `prompt.md` and the `all_files_combined.txt`.
+2.  Confirm your understanding of the project goal, current status, and the `z1.1` / `j9` protocols (especially the revised multi-file `z1.1` output).
+3.  **Do not start coding yet.** Wait for the user to provide the first `z1.1 go` or `j9 go` command.
