@@ -1,3 +1,4 @@
+--- START OF FILE: bot/src/local_simulator.rs ---
 // bot/src/local_simulator.rs
 
 //! # Local Simulation Framework (Connects to External Anvil)
@@ -21,7 +22,8 @@ use ethers::{
 use eyre::{Result, WrapErr, eyre};
 // FIX: Remove unused std::result import
 use std::{fs, sync::Arc, time::Duration};
-use tracing::{debug, error, info, instrument, warn};
+// FIX Warning: Remove unused 'error' import
+use tracing::{debug, info, instrument, warn};
 use tokio::time::error::Elapsed;
 
 
@@ -58,6 +60,9 @@ pub async fn trigger_v3_swap(
     info!(%recipient, %zero_for_one, %amount_specified, "Triggering V3 swap...");
     warn!("V3 swap trigger assumes prerequisites met AND ABI contains 'swap' function.");
 
+    // FIX E0599: Temporarily comment out the problematic call.
+    // The ABI/binding needs to be fixed before this can be used.
+    /*
     // Create ContractCall object by calling the method on the binding
     let swap_call = pool_binding.swap(
         recipient,
@@ -78,7 +83,12 @@ pub async fn trigger_v3_swap(
         .wrap_err("Send V3 swap")?;
     let tx_hash = *pending_tx;
     info!(%tx_hash, "V3 Swap transaction sent.");
-    Ok(tx_hash)
+    */
+    warn!("Skipping V3 swap execution due to known ABI/binding issue (E0599).");
+    // Return a placeholder or error - returning an error is safer
+    Err(eyre!("V3 Swap call is commented out due to missing ABI function (E0599)"))
+
+    // Ok(TxHash::zero()) // Alternatively return a zero hash if needed downstream
 }
 
 #[instrument(skip(sim_env))]
@@ -111,7 +121,7 @@ pub async fn run_simulation_scenario(sim_env: Arc<SimEnv>) -> Result<()> {
             Bytes::new(),
         )
         .await
-        .map_err(|e| error!("Trigger V3 swap failed: {:?}", e));
+        .map_err(|e| error!("Trigger V3 swap failed: {:?}", e)); // Use error! macro for errors
         */
         warn!("Skipping V3 swap trigger due to known ABI/binding issue (E0599).");
     } else { warn!("Skip UniV3 trigger."); }
@@ -119,11 +129,11 @@ pub async fn run_simulation_scenario(sim_env: Arc<SimEnv>) -> Result<()> {
 
     // FIX E0308: Corrected type hint and pattern matching for stream result
     // Type is Result<Option<Log>, Elapsed> because stream directly yields Option<Log>
-    let timeout_result: Result<Option<Option<Log>>, Elapsed> = // Removed inner Result
+    let timeout_result: Result<Option<Log>, Elapsed> = // Removed inner Option<>
         tokio::time::timeout(Duration::from_secs(30), stream.next()).await;
 
     match timeout_result {
-        Ok(Some(log_option)) => { // Stream yielded Option<Log>
+        Ok(log_option) => { // Stream yielded Option<Log> or closed (None)
              // Correct pattern: Match the Option<Log> directly
              if let Some(log) = log_option {
                  info!("Received simulated log: {:?}", log.transaction_hash);
@@ -131,12 +141,10 @@ pub async fn run_simulation_scenario(sim_env: Arc<SimEnv>) -> Result<()> {
                  warn!("Actual bot logic simulation based on event is NOT YET IMPLEMENTED.");
              } else {
                  // Stream returned None, meaning it closed gracefully.
-                 warn!("Simulated event stream ended gracefully.");
+                 warn!("Simulated event stream ended gracefully (returned None).");
              }
         }
-        Ok(None) => { // Should not happen with timeout around stream.next() unless stream closes immediately
-             warn!("Simulated event stream returned None immediately (already closed?).");
-        }
+        // Ok(None) case is handled by the inner Option<Log> match above.
         Err(_elapsed) => { // Timeout occurred
             warn!("Timeout waiting for simulated event.");
         }
