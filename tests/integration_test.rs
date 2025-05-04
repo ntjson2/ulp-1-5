@@ -2,8 +2,8 @@
 #![cfg(feature = "local_simulation")] // Only compile when the feature is enabled
 
 // Use ulp1_5:: prefix now that this is an external integration test
-use ulp1_5::local_simulator::{setup_simulation_environment, trigger_v3_swap, trigger_v2_swap}; // Removed unused SimEnv
-use ulp1_5::bindings::{UniswapV3Pool, VelodromeV2Pool}; // Removed unused ArbitrageExecutor for now
+use ulp1_5::local_simulator::{setup_simulation_environment, trigger_v3_swap, trigger_v2_swap};
+use ulp1_5::bindings::{UniswapV3Pool, VelodromeV2Pool, QuoterV2, VelodromeRouter}; // Added QuoterV2, VelodromeRouter
 // Removed unused state imports: use ulp1_5::state::{AppState, DexType};
 // Removed unused config import: use ulp1_5::config;
 // Removed unused path_optimizer import: use ulp1_5::path_optimizer;
@@ -15,7 +15,7 @@ use ulp1_5::bindings::{UniswapV3Pool, VelodromeV2Pool}; // Removed unused Arbitr
 use ethers::prelude::*;
 use ethers::utils::{parse_ether, parse_units};
 use std::sync::Arc;
-use eyre::{Result, Report, eyre}; // Removed unused WrapErr
+use eyre::{Result, Report}; // Removed unused WrapErr, eyre
 use tracing::{info, error, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 
@@ -37,7 +37,7 @@ fn setup_tracing() {
 }
 
 
-/// Test: Basic Anvil Setup and Connection
+/// Test: Basic Anvil Setup and Connection AND DEX Contract Checks
 #[tokio::test]
 #[ignore]
 async fn test_setup() -> Result<()> {
@@ -45,9 +45,73 @@ async fn test_setup() -> Result<()> {
     info!("--- Running Test: test_setup ---");
     let sim_env = setup_simulation_environment().await?;
     info!("✅ Simulation environment setup successful.");
-    // Fix E0616: Access public field
     assert!(sim_env.executor_address.is_some() || !sim_env.config.deploy_executor_in_sim);
     info!("Executor address presence check passed.");
+
+    // Load main config for addresses
+    let main_config = ulp1_5::config::load_config()?;
+
+    // --- QuoterV2 Check ---
+    info!("Attempting a direct call to QuoterV2 on Anvil...");
+    let quoter_address = main_config.quoter_v2_address;
+    if quoter_address == Address::zero() {
+        warn!("QuoterV2 address is zero in config, skipping direct check.");
+    } else {
+        let quoter = QuoterV2::new(quoter_address, sim_env.http_client.clone());
+        let params = ulp1_5::bindings::quoter_v2::QuoteExactInputSingleParams {
+            token_in: main_config.weth_address,
+            token_out: main_config.usdc_address,
+            amount_in: parse_ether(1)?,
+            fee: 500,
+            sqrt_price_limit_x96: U256::zero(),
+        };
+        info!("Calling QuoterV2 ({}) with params: {:?}", quoter_address, params);
+        match quoter.quote_exact_input_single(params).call().await {
+            Ok(quote_result) => {
+                info!("✅ Successfully called QuoterV2. Result: {:?}", quote_result);
+            }
+            Err(e) => {
+                error!("❌ Failed to call QuoterV2 directly: {:?}", e);
+                if e.to_string().contains("failed to decode empty bytes") {
+                     error!("   CONFIRMED: Issue accessing QuoterV2 contract on Anvil at address {}. Check address/fork.", quoter_address);
+                }
+            }
+        }
+    }
+    // --- End QuoterV2 Check ---
+
+    // --- Velo Router Check ---
+    info!("Attempting a direct call to VelodromeRouter on Anvil...");
+    let velo_router_address = main_config.velo_router_addr;
+    let velo_factory_address = main_config.velodrome_v2_factory_addr;
+    if velo_router_address == Address::zero() {
+        warn!("VelodromeRouter address is zero in config, skipping direct check.");
+    } else {
+        let router = VelodromeRouter::new(velo_router_address, sim_env.http_client.clone());
+        // Params for getAmountsOut (USDC -> WETH on stable pool)
+        let amount_in = parse_units("100", 6)?.into(); // 100 USDC.e
+        let routes = vec![ulp1_5::bindings::velodrome_router::Route {
+            from: main_config.usdc_address,
+            to: main_config.weth_address,
+            stable: true, // Assuming we test the stable pool route
+            factory: velo_factory_address, // Use factory from config
+        }];
+        info!("Calling VelodromeRouter ({}) getAmountsOut with routes: {:?}", velo_router_address, routes);
+        match router.get_amounts_out(amount_in, routes).call().await {
+            Ok(amounts) => {
+                info!("✅ Successfully called VelodromeRouter.getAmountsOut. Result: {:?}", amounts);
+            }
+            Err(e) => {
+                error!("❌ Failed to call VelodromeRouter.getAmountsOut directly: {:?}", e);
+                 if e.to_string().contains("failed to decode empty bytes") {
+                     error!("   CONFIRMED: Issue accessing VelodromeRouter contract/method on Anvil at address {}. Check address/fork.", velo_router_address);
+                 }
+            }
+        }
+    }
+    // --- End Velo Router Check ---
+
+
     Ok(())
 }
 
@@ -61,7 +125,7 @@ async fn test_swap_triggers() -> Result<()> {
     let sim_env = setup_simulation_environment().await?;
 
     // Example: Trigger UniV3 Swap
-    // Fix E0616: Access public field
+    // Access config directly from sim_env struct
     let uni_pool_addr: Address = sim_env.config.target_uniswap_v3_pool_address.parse()?;
     if uni_pool_addr != Address::zero() {
          info!("Attempting to trigger UniV3 swap on pool: {}", uni_pool_addr);
@@ -83,21 +147,20 @@ async fn test_swap_triggers() -> Result<()> {
              data.clone(),
          ).await {
              Ok(tx_hash) => info!("✅ UniV3 swap triggered successfully: {}", tx_hash),
-             Err(e) => warn!("⚠️ UniV3 swap trigger failed: {:?}", e), // Don't fail test, could be ABI issue still or fork state
+             Err(e) => warn!("⚠️ UniV3 swap trigger failed: {:?}", e),
          }
     } else {
          info!("Skipping UniV3 swap trigger: address is zero.");
     }
 
     // Example: Trigger VeloV2 Swap
-    // Fix E0616: Access public field
+    // Access config directly from sim_env struct
     let velo_pool_addr: Address = sim_env.config.target_velodrome_v2_pool_address.parse()?;
     if velo_pool_addr != Address::zero() {
          info!("Attempting to trigger VeloV2 swap on pool: {}", velo_pool_addr);
          let velo_pool = VelodromeV2Pool::new(velo_pool_addr, sim_env.http_client.clone());
          let amount0_out = U256::zero();
-         // Fix E0308: Unwrap the Result from parse_units
-         let amount1_out = parse_units("10", 6)?.into(); // Add ?.into()
+         let amount1_out = parse_units("10", 6)?.into();
          let to_address = sim_env.wallet_address;
          let data = Bytes::new();
 
@@ -106,7 +169,7 @@ async fn test_swap_triggers() -> Result<()> {
              velo_pool_addr,
              &velo_pool,
              amount0_out,
-             amount1_out, // Now passing U256
+             amount1_out,
              to_address,
              data.clone(),
          ).await {
