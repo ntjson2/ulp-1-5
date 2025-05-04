@@ -3,21 +3,15 @@
 
 // Use ulp1_5:: prefix now that this is an external integration test
 use ulp1_5::local_simulator::{setup_simulation_environment, trigger_v3_swap, trigger_v2_swap};
-use ulp1_5::bindings::{UniswapV3Pool, VelodromeV2Pool, QuoterV2, VelodromeRouter}; // Added QuoterV2, VelodromeRouter
-// Removed unused state imports: use ulp1_5::state::{AppState, DexType};
-// Removed unused config import: use ulp1_5::config;
-// Removed unused path_optimizer import: use ulp1_5::path_optimizer;
-// Removed unused simulation import: use ulp1_5::simulation;
-// Removed unused transaction imports: use ulp1_5::transaction::{self, NonceManager};
-// Removed unused utils import: use ulp1_5::utils::ToF64Lossy;
-
+use ulp1_5::bindings::{UniswapV3Pool, VelodromeV2Pool, QuoterV2, VelodromeRouter};
 // Keep necessary imports
 use ethers::prelude::*;
 use ethers::utils::{parse_ether, parse_units};
 use std::sync::Arc;
-use eyre::{Result, Report}; // Removed unused WrapErr, eyre
+use eyre::{Result, Report};
 use tracing::{info, error, warn};
 use tracing_subscriber::{fmt, EnvFilter};
+use std::str::FromStr; // Needed for H256::from_str
 
 
 // Helper to initialize tracing only once
@@ -36,6 +30,24 @@ fn setup_tracing() {
     });
 }
 
+/// Helper to get the EIP-1967 implementation address for local simulation
+async fn get_velo_implementation_addr<M: Middleware>(
+    client: Arc<M>, // Use Arc<M> to match SignerMiddleware type
+    proxy_addr: Address
+) -> Result<Address>
+    where M::Error: 'static + Send + Sync // Add bounds needed by get_storage_at
+{
+    // EIP‑1967 impl slot = bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1)
+    let impl_slot = H256::from_str("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc")?;
+    let value = client.get_storage_at(proxy_addr, impl_slot, None).await?;
+    let impl_addr = Address::from(value); // Convert H256 (word) to Address
+    info!("Proxy {} implementation address: {}", proxy_addr, impl_addr);
+    if impl_addr == Address::zero() {
+        eyre::bail!("Implementation address for proxy {} is zero!", proxy_addr);
+    }
+    Ok(impl_addr)
+}
+
 
 /// Test: Basic Anvil Setup and Connection AND DEX Contract Checks
 #[tokio::test]
@@ -51,7 +63,7 @@ async fn test_setup() -> Result<()> {
     // Load main config for addresses
     let main_config = ulp1_5::config::load_config()?;
 
-    // --- QuoterV2 Check ---
+    // --- QuoterV2 Check (Should still work) ---
     info!("Attempting a direct call to QuoterV2 on Anvil...");
     let quoter_address = main_config.quoter_v2_address;
     if quoter_address == Address::zero() {
@@ -72,40 +84,60 @@ async fn test_setup() -> Result<()> {
             }
             Err(e) => {
                 error!("❌ Failed to call QuoterV2 directly: {:?}", e);
-                if e.to_string().contains("failed to decode empty bytes") {
-                     error!("   CONFIRMED: Issue accessing QuoterV2 contract on Anvil at address {}. Check address/fork.", quoter_address);
-                }
             }
         }
     }
     // --- End QuoterV2 Check ---
 
-    // --- Velo Router Check ---
-    info!("Attempting a direct call to VelodromeRouter on Anvil...");
-    let velo_router_address = main_config.velo_router_addr;
+    // --- Velo Router Check (Using Implementation Address) ---
+    info!("Attempting a direct call to VelodromeRouter IMPL on Anvil...");
+    let velo_router_proxy_address = main_config.velo_router_addr;
     let velo_factory_address = main_config.velodrome_v2_factory_addr;
-    if velo_router_address == Address::zero() {
-        warn!("VelodromeRouter address is zero in config, skipping direct check.");
+
+    if velo_router_proxy_address == Address::zero() {
+        warn!("VelodromeRouter proxy address is zero in config, skipping direct check.");
     } else {
-        let router = VelodromeRouter::new(velo_router_address, sim_env.http_client.clone());
-        // Params for getAmountsOut (USDC -> WETH on stable pool)
+        // Get the IMPLEMENTATION address specifically for this test call
+        let velo_router_impl_address = get_velo_implementation_addr(sim_env.http_client.clone(), velo_router_proxy_address).await?;
+
+        // Instantiate router binding at the IMPLEMENTATION address
+        let router = VelodromeRouter::new(velo_router_impl_address, sim_env.http_client.clone());
+
+        // Params for getAmountsOut (USDC -> WETH - volatile pair requires stable: false)
         let amount_in = parse_units("100", 6)?.into(); // 100 USDC.e
+        let token_a = main_config.usdc_address;
+        let token_b = main_config.weth_address;
+        let stable_flag = false;
         let routes = vec![ulp1_5::bindings::velodrome_router::Route {
-            from: main_config.usdc_address,
-            to: main_config.weth_address,
-            stable: true, // Assuming we test the stable pool route
-            factory: velo_factory_address, // Use factory from config
+            from: token_a,
+            to: token_b,
+            stable: stable_flag,
+            factory: velo_factory_address,
         }];
-        info!("Calling VelodromeRouter ({}) getAmountsOut with routes: {:?}", velo_router_address, routes);
+
+        // Optional: Add the pool_for check for better error message (call on IMPL addr)
+        match router.pool_for(token_a, token_b, stable_flag, velo_factory_address).call().await {
+             Ok(pool_addr) if pool_addr != Address::zero() => {
+                  info!("✅ pool_for check successful on IMPL, found pool: {:?}", pool_addr);
+             }
+             Ok(_) => {
+                 error!("❌ pool_for check on IMPL returned zero address. No pool found for {:?}/{:?} with stable={}. Wrong flag or factory?", token_a, token_b, stable_flag);
+             }
+             Err(e) => {
+                 error!("❌ pool_for check failed on IMPL: {:?}", e);
+             }
+         }
+
+        // Now attempt the actual getAmountsOut call on IMPL addr
+        info!("Calling VelodromeRouter IMPL ({}) getAmountsOut with routes: {:?}", velo_router_impl_address, routes);
         match router.get_amounts_out(amount_in, routes).call().await {
             Ok(amounts) => {
-                info!("✅ Successfully called VelodromeRouter.getAmountsOut. Result: {:?}", amounts);
+                info!("✅ Successfully called VelodromeRouter IMPL.getAmountsOut. Result: {:?}", amounts);
             }
             Err(e) => {
-                error!("❌ Failed to call VelodromeRouter.getAmountsOut directly: {:?}", e);
-                 if e.to_string().contains("failed to decode empty bytes") {
-                     error!("   CONFIRMED: Issue accessing VelodromeRouter contract/method on Anvil at address {}. Check address/fork.", velo_router_address);
-                 }
+                error!("❌ Failed to call VelodromeRouter IMPL.getAmountsOut directly: {:?}", e);
+                 // Fail the test if this diagnostic call fails now
+                 return Err(e.into());
             }
         }
     }
@@ -115,17 +147,14 @@ async fn test_setup() -> Result<()> {
     Ok(())
 }
 
+// --- test_swap_triggers remains unchanged ---
 /// Test: Triggering Swaps on Anvil Fork
 #[tokio::test]
 #[ignore]
 async fn test_swap_triggers() -> Result<()> {
     setup_tracing();
     info!("--- Running Test: test_swap_triggers ---");
-    // Create SimEnv but don't Arc it here, pass borrows to functions that need it
     let sim_env = setup_simulation_environment().await?;
-
-    // Example: Trigger UniV3 Swap
-    // Access config directly from sim_env struct
     let uni_pool_addr: Address = sim_env.config.target_uniswap_v3_pool_address.parse()?;
     if uni_pool_addr != Address::zero() {
          info!("Attempting to trigger UniV3 swap on pool: {}", uni_pool_addr);
@@ -135,9 +164,8 @@ async fn test_swap_triggers() -> Result<()> {
          let amount_specified = I256::from_raw(parse_ether("0.01")?);
          let sqrt_price_limit_x96 = U256::zero();
          let data = Bytes::new();
-
         match trigger_v3_swap(
-             &sim_env, // Pass borrow
+             &sim_env,
              uni_pool_addr,
              &uni_pool,
              recipient,
@@ -152,9 +180,6 @@ async fn test_swap_triggers() -> Result<()> {
     } else {
          info!("Skipping UniV3 swap trigger: address is zero.");
     }
-
-    // Example: Trigger VeloV2 Swap
-    // Access config directly from sim_env struct
     let velo_pool_addr: Address = sim_env.config.target_velodrome_v2_pool_address.parse()?;
     if velo_pool_addr != Address::zero() {
          info!("Attempting to trigger VeloV2 swap on pool: {}", velo_pool_addr);
@@ -163,9 +188,8 @@ async fn test_swap_triggers() -> Result<()> {
          let amount1_out = parse_units("10", 6)?.into();
          let to_address = sim_env.wallet_address;
          let data = Bytes::new();
-
          match trigger_v2_swap(
-             &sim_env, // Pass borrow
+             &sim_env,
              velo_pool_addr,
              &velo_pool,
              amount0_out,
@@ -182,52 +206,47 @@ async fn test_swap_triggers() -> Result<()> {
     } else {
          info!("Skipping VeloV2 swap trigger: address is zero.");
     }
-
     Ok(())
 }
 
 
-/// Test: Simulate the full arbitrage cycle sequentially
+// --- test_full_arbitrage_cycle_simulation - IMPORTANT NOTE ---
+// This test will STILL likely fail at the simulate_swap call for Velodrome
+// because the `simulation::simulate_swap` function uses the router address
+// directly from the Config (which holds the PROXY address).
+// To make THIS test pass end-to-end, `simulate_swap` would also need
+// modification similar to the helper function used in `test_setup` to
+// conditionally use the implementation address when cfg(feature = "local_simulation")
+// is active. That modification is outside the scope of this specific j9 fix
+// for the `test_setup` diagnostic.
 #[tokio::test]
 #[ignore]
 async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
     setup_tracing();
     info!("--- Running Test: test_full_arbitrage_cycle_simulation ---");
-
-    // Re-import necessary types/modules locally for this test
     use ulp1_5::state::{AppState, DexType};
     use ulp1_5::config::load_config;
     use ulp1_5::path_optimizer::RouteCandidate;
     use ulp1_5::simulation::find_optimal_loan_amount;
     use ulp1_5::transaction::{fetch_gas_price, submit_arbitrage_transaction, NonceManager};
     use ulp1_5::utils::ToF64Lossy;
-
-    // 1. Setup
-    // Create SimEnv directly
     let sim_env = setup_simulation_environment().await?;
-    let client = sim_env.http_client.clone(); // Clone the Arc'd client
+    let client = sim_env.http_client.clone();
     let executor_addr = sim_env.executor_address.expect("Executor must be deployed for this test");
     info!("Anvil Setup Complete. Executor: {:?}", executor_addr);
-
-    // Load config using load_config directly
     let config = load_config().expect("Failed to load test config from .env");
     let weth_addr = config.weth_address;
     let usdc_addr = config.usdc_address;
-
     let pool_a_addr_str = "0x851492574065EDE975391E141377067943aA08eF";
     let pool_b_addr_str = "0x207addb05c548f262219f6b50eadff8640ed6488";
     let pool_a_addr: Address = pool_a_addr_str.parse()?;
     let pool_b_addr: Address = pool_b_addr_str.parse()?;
-    info!("Using Test Pools: A (UniV3)={}, B (VeloV2)={}", pool_a_addr, pool_b_addr);
-
-
-    // 2. Identify Opportunity (Manual)
-    // Use RouteCandidate directly
+    info!("Using Test Pools: A (UniV3)={}, B (VeloV2 Stable)={}", pool_a_addr, pool_b_addr);
     let route = RouteCandidate {
         buy_pool_addr: pool_a_addr,
         sell_pool_addr: pool_b_addr,
-        buy_dex_type: DexType::UniswapV3, // Use directly
-        sell_dex_type: DexType::VelodromeV2, // Use directly
+        buy_dex_type: DexType::UniswapV3,
+        sell_dex_type: DexType::VelodromeV2,
         token_in: weth_addr,
         token_out: usdc_addr,
         buy_pool_fee: Some(500),
@@ -240,20 +259,12 @@ async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
         estimated_profit_usd: 0.1,
     };
     info!("Constructed Manual Route Candidate: {:?}", route);
-
-    // 3. Simulate & Optimize
-    // Use AppState directly
     let app_state = Arc::new(AppState::new(config.clone()));
-    // Use fetch_gas_price directly
     let gas_info = fetch_gas_price(client.clone(), &config).await?;
-    // Use ToF64Lossy directly
     let gas_price_gwei = ToF64Lossy::to_f64_lossy(&gas_info.max_priority_fee_per_gas) / 1e9;
     info!("Fetched Anvil gas price (prio): {} gwei", gas_price_gwei);
-
     let buy_snapshot = None;
     let sell_snapshot = None;
-
-    // Use find_optimal_loan_amount directly
     let optimal_loan_result = find_optimal_loan_amount(
         client.clone(),
         app_state.clone(),
@@ -262,7 +273,6 @@ async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
         sell_snapshot,
         gas_price_gwei,
     ).await?;
-
     let (loan_amount_wei, simulated_net_profit_wei) = match optimal_loan_result {
         Some((amount, profit)) if profit > I256::zero() => {
             info!("✅ Optimal loan found: amount={}, profit={}", amount, profit);
@@ -273,27 +283,20 @@ async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
              (U256::zero(), I256::zero())
         }
         None => {
-            warn!("❌ No profitable loan amount found during simulation. Aborting cycle test.");
+            // Add NOTE here about Velo simulation failure
+            warn!("❌ No profitable loan amount found during simulation. NOTE: This is expected if the underlying Velo simulation failed due to the Anvil proxy issue. Aborting cycle test.");
             return Ok(());
         }
     };
-
     if loan_amount_wei.is_zero() {
         info!("Skipping transaction submission as no profitable loan was simulated.");
         return Ok(());
     }
-
-    // 4. Execute Transaction
-    // Use NonceManager directly
     let nonce_manager = Arc::new(NonceManager::new(sim_env.wallet_address));
-
     let mut test_config = config.clone();
     test_config.arb_executor_address = Some(executor_addr);
-    // Use AppState directly
     let app_state = Arc::new(AppState::new(test_config));
-
     info!("Submitting arbitrage transaction...");
-    // Use submit_arbitrage_transaction directly
     let submission_result = submit_arbitrage_transaction(
         client.clone(),
         app_state.clone(),
@@ -302,8 +305,6 @@ async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
         simulated_net_profit_wei,
         nonce_manager.clone(),
     ).await;
-
-    // 5. Verification
     match submission_result {
         Ok(tx_hash) => {
             info!("✅ Transaction submitted and confirmed successfully: {}", tx_hash);
@@ -314,48 +315,35 @@ async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
                 warn!("Transaction reverted as expected/possible due to on-chain conditions differing from simulation.");
             } else if e.to_string().contains("ALERT:") {
                  error!("Submission failed with ALERT: {:?}", e);
-                 // Use e.wrap_err directly
                  return Err(e.wrap_err("Submission failed due to ALERT"));
             } else {
                  error!("Submission failed with unexpected error: {:?}", e);
-                 // Use e.wrap_err directly
                  return Err(e.wrap_err("Submission failed unexpectedly"));
             }
         }
     }
-
     info!("--- Test Finished: test_full_arbitrage_cycle_simulation ---");
     Ok(())
 }
 
 
+// --- test_huff_direct_call remains unchanged ---
 /// Placeholder: Test direct interaction with Huff contract functions (e.g., withdraw)
 #[tokio::test]
 #[ignore]
 async fn test_huff_direct_call() -> Result<()> {
     setup_tracing();
     info!("--- Running Test: test_huff_direct_call ---");
-
-    // Re-import necessary types/modules locally for this test
     use ulp1_5::bindings::ArbitrageExecutor;
-
     let sim_env = setup_simulation_environment().await?;
     let executor_addr = sim_env.executor_address.expect("Executor must be deployed");
-    let client = sim_env.http_client.clone(); // Clone Arc'd client
-
+    let client = sim_env.http_client.clone();
     info!("Attempting direct call to Huff contract (e.g., withdraw - requires funds)");
-
-    // Instantiate executor binding directly
     let executor = ArbitrageExecutor::new(executor_addr, client.clone());
-    // Fix E0616: Access public field
     let token_to_withdraw: Address = sim_env.config.target_weth_address.parse()?;
     let recipient = sim_env.wallet_address;
-
     warn!("Withdraw test requires the executor contract ({:?}) to hold WETH on the Anvil fork.", executor_addr);
-
     let tx = executor.withdraw_token(token_to_withdraw, recipient);
-
-    // Send the transaction
     match tx.send().await {
         Ok(pending_tx) => {
             info!("Withdraw tx sent: {:?}. Waiting for confirmation...", pending_tx.tx_hash());
@@ -377,6 +365,5 @@ async fn test_huff_direct_call() -> Result<()> {
              return Err(Report::from(e).wrap_err("Withdraw tx failed to send"));
         }
     }
-
     Ok(())
 }
