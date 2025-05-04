@@ -1,3 +1,4 @@
+# Cargo.toml
 [package]
 name = "ulp1_5"
 version = "0.1.0"
@@ -6,6 +7,16 @@ edition = "2021"
 [features]
 # Enables the local_simulator module and its dependencies
 local_simulation = []
+
+# Define the library target
+[lib]
+name = "ulp1_5" # Use the package name for the library
+path = "bot/src/lib.rs"
+
+# Define the main binary target
+[[bin]]
+name = "ulp1_5"
+path = "bot/src/main.rs" # Adjusted path based on your info
 
 [dependencies]
 ethers = { version = "2.0", features = ["abigen", "legacy", "ws"] }
@@ -24,8 +35,3 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 dashmap = "5.5"
 futures-util = "0.3"
 lazy_static = "1.4.0" # Added lazy_static
-
-# EXPLICITLY define the main binary target
-[[bin]]
-name = "ulp1_5"
-path = "bot/src/main.rs" # Adjusted path based on your info

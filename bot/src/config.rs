@@ -60,6 +60,10 @@ pub struct Config {
     pub min_profit_buffer_bps: u64, // Buffer in basis points (100ths of a percent)
     pub min_profit_abs_buffer_wei_str: String, // Buffer in absolute wei (as string to handle large numbers)
 
+    // Health Check & Monitoring
+    pub critical_block_lag_seconds: u64, // Added field
+    pub critical_log_lag_seconds: u64,   // Added field
+
 }
 
 // --- Parsing helpers ---
@@ -143,6 +147,11 @@ pub fn load_config() -> Result<Config> {
     // --- Load Optional String Vars ---
     let private_rpc_url = env::var("PRIVATE_RPC_URL").ok(); let secondary_private_rpc_url = env::var("SECONDARY_PRIVATE_RPC_URL").ok();
 
+    // --- Load Health Check Vars --- Added
+    let critical_block_lag_seconds = parse_u64_env("CRITICAL_BLOCK_LAG_SECONDS", 300); // Default 300s
+    let critical_log_lag_seconds = parse_u64_env("CRITICAL_LOG_LAG_SECONDS", 300); // Default 300s
+
+
     // --- Construct Config ---
     let config = Config {
         ws_rpc_url, http_rpc_url, local_private_key, chain_id, arb_executor_address,
@@ -153,7 +162,8 @@ pub fn load_config() -> Result<Config> {
         enable_univ3_dynamic_sizing,
         max_priority_fee_per_gas_gwei, fallback_gas_price_gwei,
         gas_limit_buffer_percentage, min_flashloan_gas_limit, private_rpc_url, secondary_private_rpc_url,
-        min_profit_buffer_bps, min_profit_abs_buffer_wei_str, // Add new fields
+        min_profit_buffer_bps, min_profit_abs_buffer_wei_str,
+        critical_block_lag_seconds, critical_log_lag_seconds, // Added fields
     };
     info!("✅ Config loaded."); debug!(?config); Ok(config)
 }
