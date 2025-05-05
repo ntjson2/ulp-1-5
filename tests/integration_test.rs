@@ -8,10 +8,10 @@ use ulp1_5::bindings::{UniswapV3Pool, VelodromeV2Pool, QuoterV2, VelodromeRouter
 use ethers::prelude::*;
 use ethers::utils::{parse_ether, parse_units};
 use std::sync::Arc;
-use eyre::{Result, Report};
+use eyre::{Result, Report, eyre}; // Keep eyre
 use tracing::{info, error, warn};
 use tracing_subscriber::{fmt, EnvFilter};
-use std::str::FromStr; // Needed for H256::from_str
+use std::str::FromStr; // Needed for Address::from_str
 
 
 // Helper to initialize tracing only once
@@ -30,23 +30,9 @@ fn setup_tracing() {
     });
 }
 
-/// Helper to get the EIP-1967 implementation address for local simulation
-async fn get_velo_implementation_addr<M: Middleware>(
-    client: Arc<M>, // Use Arc<M> to match SignerMiddleware type
-    proxy_addr: Address
-) -> Result<Address>
-    where M::Error: 'static + Send + Sync // Add bounds needed by get_storage_at
-{
-    // EIP‑1967 impl slot = bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1)
-    let impl_slot = H256::from_str("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc")?;
-    let value = client.get_storage_at(proxy_addr, impl_slot, None).await?;
-    let impl_addr = Address::from(value); // Convert H256 (word) to Address
-    info!("Proxy {} implementation address: {}", proxy_addr, impl_addr);
-    if impl_addr == Address::zero() {
-        eyre::bail!("Implementation address for proxy {} is zero!", proxy_addr);
-    }
-    Ok(impl_addr)
-}
+// Define the hardcoded implementation address for local simulation tests
+#[cfg(feature = "local_simulation")]
+const VELO_ROUTER_IMPL_ADDR_FOR_TEST: &str = "0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858";
 
 
 /// Test: Basic Anvil Setup and Connection AND DEX Contract Checks
@@ -64,6 +50,7 @@ async fn test_setup() -> Result<()> {
     let main_config = ulp1_5::config::load_config()?;
 
     // --- QuoterV2 Check (Should still work) ---
+    // (This section remains unchanged)
     info!("Attempting a direct call to QuoterV2 on Anvil...");
     let quoter_address = main_config.quoter_v2_address;
     if quoter_address == Address::zero() {
@@ -72,7 +59,7 @@ async fn test_setup() -> Result<()> {
         let quoter = QuoterV2::new(quoter_address, sim_env.http_client.clone());
         let params = ulp1_5::bindings::quoter_v2::QuoteExactInputSingleParams {
             token_in: main_config.weth_address,
-            token_out: main_config.usdc_address,
+            token_out: main_config.usdc_address, // Using USDC.e address here
             amount_in: parse_ether(1)?,
             fee: 500,
             sqrt_price_limit_x96: U256::zero(),
@@ -89,55 +76,63 @@ async fn test_setup() -> Result<()> {
     }
     // --- End QuoterV2 Check ---
 
-    // --- Velo Router Check (Using Implementation Address) ---
-    info!("Attempting a direct call to VelodromeRouter IMPL on Anvil...");
-    let velo_router_proxy_address = main_config.velo_router_addr;
+    // --- Velo Router Check (Using HARDCODED Implementation Address for Local Sim) ---
+    info!("Attempting a direct call to VelodromeRouter IMPL on Anvil (using hardcoded address)...");
+    let velo_router_proxy_address = main_config.velo_router_addr; // Keep for reference/logging if needed
     let velo_factory_address = main_config.velodrome_v2_factory_addr;
 
     if velo_router_proxy_address == Address::zero() {
         warn!("VelodromeRouter proxy address is zero in config, skipping direct check.");
     } else {
-        // Get the IMPLEMENTATION address specifically for this test call
-        let velo_router_impl_address = get_velo_implementation_addr(sim_env.http_client.clone(), velo_router_proxy_address).await?;
+        // HARDCODE the known implementation address for local testing due to Anvil proxy issues
+        let velo_router_impl_address = Address::from_str(VELO_ROUTER_IMPL_ADDR_FOR_TEST)?;
+        info!("Using hardcoded IMPL address for local test: {}", velo_router_impl_address);
 
         // Instantiate router binding at the IMPLEMENTATION address
         let router = VelodromeRouter::new(velo_router_impl_address, sim_env.http_client.clone());
 
-        // Params for getAmountsOut (USDC -> WETH - volatile pair requires stable: false)
+        // Params for getAmountsOut (USDC.e -> WETH - requires stable: true for the existing pool)
         let amount_in = parse_units("100", 6)?.into(); // 100 USDC.e
-        let token_a = main_config.usdc_address;
-        let token_b = main_config.weth_address;
-        let stable_flag = false;
-        let routes = vec![ulp1_5::bindings::velodrome_router::Route {
-            from: token_a,
-            to: token_b,
-            stable: stable_flag,
-            factory: velo_factory_address,
-        }];
+        let token_a = main_config.usdc_address; // USDC.e
+        let token_b = main_config.weth_address; // WETH
+        let stable_flag = true; // Use true for the existing WETH/USDC.e stable pool
 
-        // Optional: Add the pool_for check for better error message (call on IMPL addr)
+        // Check if the specific stable pool exists using the IMPL address
+        info!("Checking pool_for with stable={} using IMPL address {}...", stable_flag, velo_router_impl_address);
         match router.pool_for(token_a, token_b, stable_flag, velo_factory_address).call().await {
              Ok(pool_addr) if pool_addr != Address::zero() => {
                   info!("✅ pool_for check successful on IMPL, found pool: {:?}", pool_addr);
+                  let expected_stable_pool = Address::from_str("0x207addb05c548f262219f6b50eadff8640ed6488")?;
+                  assert_eq!(pool_addr, expected_stable_pool, "Found pool does not match expected stable pool");
              }
              Ok(_) => {
                  error!("❌ pool_for check on IMPL returned zero address. No pool found for {:?}/{:?} with stable={}. Wrong flag or factory?", token_a, token_b, stable_flag);
+                 return Err(eyre!("pool_for check failed - pool not found"));
              }
              Err(e) => {
-                 error!("❌ pool_for check failed on IMPL: {:?}", e);
+                 // If this fails now, it's unexpected when calling the IMPL
+                 error!("❌ pool_for check failed unexpectedly on IMPL: {:?}", e);
+                 return Err(e.into());
              }
          }
 
-        // Now attempt the actual getAmountsOut call on IMPL addr
+        // Now attempt the actual getAmountsOut call using the IMPL address
+        let routes = vec![ulp1_5::bindings::velodrome_router::Route {
+            from: token_a,
+            to: token_b,
+            stable: stable_flag, // Use true here as well
+            factory: velo_factory_address,
+        }];
         info!("Calling VelodromeRouter IMPL ({}) getAmountsOut with routes: {:?}", velo_router_impl_address, routes);
         match router.get_amounts_out(amount_in, routes).call().await {
             Ok(amounts) => {
                 info!("✅ Successfully called VelodromeRouter IMPL.getAmountsOut. Result: {:?}", amounts);
+                assert_eq!(amounts.len(), 2, "Expected 2 amounts from getAmountsOut");
+                assert!(amounts[1] > U256::zero(), "Expected non-zero output amount from getAmountsOut");
             }
             Err(e) => {
                 error!("❌ Failed to call VelodromeRouter IMPL.getAmountsOut directly: {:?}", e);
-                 // Fail the test if this diagnostic call fails now
-                 return Err(e.into());
+                 return Err(e.into()); // Fail the test if this diagnostic call fails
             }
         }
     }
@@ -211,14 +206,8 @@ async fn test_swap_triggers() -> Result<()> {
 
 
 // --- test_full_arbitrage_cycle_simulation - IMPORTANT NOTE ---
-// This test will STILL likely fail at the simulate_swap call for Velodrome
-// because the `simulation::simulate_swap` function uses the router address
-// directly from the Config (which holds the PROXY address).
-// To make THIS test pass end-to-end, `simulate_swap` would also need
-// modification similar to the helper function used in `test_setup` to
-// conditionally use the implementation address when cfg(feature = "local_simulation")
-// is active. That modification is outside the scope of this specific j9 fix
-// for the `test_setup` diagnostic.
+// This test will STILL likely fail until simulate_swap is modified to use the
+// implementation address workaround when cfg(feature = "local_simulation").
 #[tokio::test]
 #[ignore]
 async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
@@ -252,7 +241,7 @@ async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
         buy_pool_fee: Some(500),
         sell_pool_fee: None,
         buy_pool_stable: None,
-        sell_pool_stable: Some(true),
+        sell_pool_stable: Some(true), // Correct for the stable pool target
         buy_pool_factory: config.uniswap_v3_factory_addr,
         sell_pool_factory: config.velodrome_v2_factory_addr,
         zero_for_one_a: true,
@@ -283,8 +272,8 @@ async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
              (U256::zero(), I256::zero())
         }
         None => {
-            // Add NOTE here about Velo simulation failure
-            warn!("❌ No profitable loan amount found during simulation. NOTE: This is expected if the underlying Velo simulation failed due to the Anvil proxy issue. Aborting cycle test.");
+            // NOTE: This path might still be hit if simulate_swap uses the proxy address
+            warn!("❌ No profitable loan amount found during simulation. This is likely because the underlying Velo simulation in `simulate_swap` still uses the proxy address and hits the Anvil proxy issue. Aborting cycle test.");
             return Ok(());
         }
     };
