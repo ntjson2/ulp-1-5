@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::str::FromStr;
 use tokio::sync::Mutex;
-use tokio::time::{sleep, timeout};
+use tokio::time::{sleep, timeout}; // Import timeout
 use tracing::{debug, error, info, instrument, warn, trace};
 
 // --- Constants ---
@@ -29,6 +29,7 @@ const TX_CONFIRMATION_TIMEOUT_SECS: u64 = 90;
 const TX_POLLING_INTERVAL_MS: u64 = 5000;
 const TX_STALLED_POLL_COUNT: u32 = 6;
 const TX_SUCCESS_STATUS: U64 = U64([1]);
+const GAS_ESTIMATION_TIMEOUT_SECS: u64 = 20; // Timeout for gas estimation step
 
 // --- Structs ---
 #[derive(Debug, Clone, Copy)] pub struct GasInfo { pub max_fee_per_gas: U256, pub max_priority_fee_per_gas: U256 }
@@ -36,6 +37,7 @@ const TX_SUCCESS_STATUS: U64 = U64([1]);
 #[derive(Serialize, Debug)] #[serde(rename_all = "camelCase")] struct AlchemyPrivateTxParams<'a> { tx: &'a str }
 
 // --- NonceManager Impl ---
+// (remains unchanged)
 impl NonceManager {
     pub fn new(wallet_address: Address) -> Self { Self { current_nonce: Mutex::new(None), wallet_address } }
 
@@ -88,17 +90,23 @@ impl NonceManager {
                 *guard = Some(used_nonce + U256::one());
             }
              Some(current) => {
-                 error!(confirmed_nonce=%used_nonce, current_cached_nonce=%current, "Unexpected state in nonce confirmation logic! Check comparison.");
-                 *guard = Some(used_nonce + U256::one());
+                 // This case was previously hitting a panic due to `current` being moved, fixed comparison logic
+                 if current != used_nonce { // Explicitly check inequality if not covered above
+                    error!(confirmed_nonce=%used_nonce, current_cached_nonce=%current, "Unexpected state in nonce confirmation logic! Check comparison.");
+                    // Decide recovery strategy, e.g., reset or use confirmed nonce
+                    *guard = Some(used_nonce + U256::one());
+                 }
+                 // If current == used_nonce, it's handled by the first arm
              }
         }
     }
 }
 
+
 // --- fetch_gas_price function ---
+// (remains unchanged)
 #[instrument(skip(client, config), level = "debug")]
 pub async fn fetch_gas_price(client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>, config: &Config) -> Result<GasInfo> {
-    // ... (implementation remains the same)
     debug!("Fetching EIP-1559 gas prices...");
     let max_prio_gwei_str = config.max_priority_fee_per_gas_gwei.to_string();
     let fallback_prio_gwei_str = config.fallback_gas_price_gwei.unwrap_or(config.max_priority_fee_per_gas_gwei).to_string();
@@ -136,12 +144,12 @@ pub async fn fetch_gas_price(client: Arc<SignerMiddleware<Provider<Http>, LocalW
 
 
 /// Calculates the minimum profit required for the transaction to be considered successful on-chain.
+// (remains unchanged)
 #[instrument(level = "debug", skip(config))]
 fn calculate_min_profit_threshold(
     simulated_net_profit_wei: I256,
     config: &Config,
 ) -> Result<U256> {
-    // ... (implementation remains the same)
     debug!(simulated_net_profit_wei=%simulated_net_profit_wei, "Calculating min profit threshold...");
     if simulated_net_profit_wei <= I256::zero() {
         warn!("Simulated net profit is zero or negative. Setting min profit threshold to 1 wei.");
@@ -170,6 +178,7 @@ fn calculate_min_profit_threshold(
     Ok(min_profit_wei_u256)
 }
 
+
 /// Constructs, submits, and monitors the arbitrage transaction using polling.
 #[instrument(skip_all, level = "info", fields(
     buy_pool = %route.buy_pool_addr,
@@ -191,11 +200,15 @@ pub async fn submit_arbitrage_transaction(
     // FIX: Prefix unused variable
     let _start_time = SystemTime::now();
 
-    // --- Prepare Tx Data (Steps 1-8) ---
+    // --- Prepare Tx Data ---
+    trace!("Step 1: Fetching gas price...");
     let gas_info = fetch_gas_price(client.clone(), config).await.wrap_err("ALERT: Failed gas price fetch pre-submission")?;
+    trace!("Step 2: Calculating min profit threshold...");
     let min_profit_wei_u256 = calculate_min_profit_threshold(simulated_net_profit_wei, config)
         .wrap_err("ALERT: Failed to calculate minimum profit threshold")?;
+    trace!("Step 3: Generating salt...");
     let salt = U256::from(SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos());
+    trace!("Step 4: Determining effective router address...");
     let effective_router_addr = {
          if route.buy_dex_type.is_velo_style() || route.sell_dex_type.is_velo_style() {
             if route.buy_dex_type == DexType::Aerodrome || route.sell_dex_type == DexType::Aerodrome {
@@ -204,23 +217,65 @@ pub async fn submit_arbitrage_transaction(
                 config.velo_router_addr
             }
         } else {
+             // Should not happen in 2-swap arb, but use Velo as default
              config.velo_router_addr
         }
     };
+    trace!("Step 5: Encoding user data...");
     let user_data = encode_user_data( route.buy_pool_addr, route.sell_pool_addr, app_state.usdc_address, route.zero_for_one_a, route.buy_dex_type.is_velo_style(), route.sell_dex_type.is_velo_style(), effective_router_addr, min_profit_wei_u256, salt )?;
-    let estimated_gas_limit = estimate_flash_loan_gas( client.clone(), config.balancer_vault_address, config.arb_executor_address.ok_or_else(|| eyre!("Executor address missing"))?, app_state.weth_address, loan_amount_wei, user_data.clone(), ).await.wrap_err("ALERT: Gas estimation failed pre-submission")?;
+
+    // --- Step 6: Estimate Gas with Timeout ---
+    trace!("Step 6: Estimating gas limit (timeout: {}s)...", GAS_ESTIMATION_TIMEOUT_SECS);
+    let gas_est_timeout = Duration::from_secs(GAS_ESTIMATION_TIMEOUT_SECS);
+    let gas_estimate_result = timeout(
+        gas_est_timeout,
+        estimate_flash_loan_gas(
+            client.clone(),
+            config.balancer_vault_address,
+            config.arb_executor_address.ok_or_else(|| eyre!("Executor address missing for gas estimate"))?,
+            app_state.weth_address, // Use loan token (WETH) from app_state
+            loan_amount_wei,
+            user_data.clone(),
+        )
+    ).await;
+
+    let estimated_gas_limit = match gas_estimate_result {
+        Ok(Ok(est)) => {
+            trace!("Gas estimation successful: {}", est);
+            est
+        }
+        Ok(Err(e)) => {
+             // Propagate error if gas estimation fails within timeout
+            error!(error = ?e, "ALERT: Gas estimation failed pre-submission");
+            return Err(e.wrap_err("ALERT: Gas estimation failed pre-submission"));
+        }
+        Err(_) => {
+            // Handle timeout specifically
+             error!(timeout_secs = gas_est_timeout.as_secs(), "ALERT: Gas estimation timed out pre-submission");
+             return Err(eyre!("ALERT: Gas estimation timed out after {}s", gas_est_timeout.as_secs()));
+        }
+    };
+
+    trace!("Step 7: Calculating final gas limit...");
     let final_gas_limit = std::cmp::max(estimated_gas_limit * (100 + config.gas_limit_buffer_percentage) / 100, U256::from(config.min_flashloan_gas_limit));
+    trace!("Step 8: Getting next nonce...");
     let nonce = nonce_manager.get_next_nonce(client.clone()).await.wrap_err("ALERT: Nonce fetch failed pre-submission")?;
+    trace!("Step 9: Preparing contract call...");
     let balancer_contract = BalancerVault::new(config.balancer_vault_address, client.clone());
-    let calldata = balancer_contract.flash_loan( config.arb_executor_address.ok_or_else(|| eyre!("Executor address missing"))?, vec![app_state.weth_address], vec![loan_amount_wei], user_data, ).calldata().ok_or_else(|| eyre!("ALERT: Calldata generation failed"))?;
+    let executor_address = config.arb_executor_address.ok_or_else(|| eyre!("Executor address missing for flash loan target"))?;
+    let calldata = balancer_contract.flash_loan( executor_address, vec![app_state.weth_address], vec![loan_amount_wei], user_data, ).calldata().ok_or_else(|| eyre!("ALERT: Calldata generation failed"))?;
+    trace!("Step 10: Constructing transaction request...");
     let tx_request = Eip1559TransactionRequest::new().to(config.balancer_vault_address).value(U256::zero()).data(calldata).gas(final_gas_limit).max_fee_per_gas(gas_info.max_fee_per_gas).max_priority_fee_per_gas(gas_info.max_priority_fee_per_gas).nonce(nonce).chain_id(client.signer().chain_id());
     info!(nonce = %nonce, gas_limit = %final_gas_limit, max_fee = %gas_info.max_fee_per_gas, max_prio = %gas_info.max_priority_fee_per_gas, min_profit_req_wei = %min_profit_wei_u256, "Constructed Tx Request");
     let typed_tx: TypedTransaction = tx_request.clone().into();
+    trace!("Step 11: Signing transaction...");
     let signature = client.signer().sign_transaction(&typed_tx).await.wrap_err("ALERT: Signing failed pre-submission")?;
     let rlp_signed = typed_tx.rlp_signed(&signature);
     let rlp_hex = format!("0x{}", hex::encode(rlp_signed.as_ref()));
+    trace!("Transaction signed. RLP Hex: {}", rlp_hex); // Be careful logging this if sensitive
 
-    // --- Step 9: Attempt Submissions Sequentially ---
+    // --- Step 12: Attempt Submissions Sequentially ---
+    trace!("Step 12: Attempting sequential submission...");
     let submitted_tx_hash = match timeout(Duration::from_secs(TX_SUBMISSION_TIMEOUT_SECS), submit_sequentially( &config, client.provider(), client.clone(), &rlp_hex, &rlp_signed )).await {
         Ok(Ok(hash)) => {
             tracing::Span::current().record("tx_hash", tracing::field::debug(hash));
@@ -243,7 +298,8 @@ pub async fn submit_arbitrage_transaction(
         }
     };
 
-    // --- Step 10: Monitor Submitted Transaction via Polling ---
+    // --- Step 13: Monitor Submitted Transaction via Polling ---
+    // (Monitoring logic remains unchanged)
     info!(%submitted_tx_hash, "Monitoring transaction confirmation (Polling every {}ms, Timeout: {}s)...", TX_POLLING_INTERVAL_MS, TX_CONFIRMATION_TIMEOUT_SECS);
     let confirmation_start_time = SystemTime::now();
     let mut poll_count = 0;
@@ -271,6 +327,8 @@ pub async fn submit_arbitrage_transaction(
                 } else {
                      error!(tx_hash = %submitted_tx_hash, status = ?receipt.status, block = %receipt.block_number.unwrap_or_default(), gas_used = %gas_used, gas_cost_eth = %gas_cost_eth, route = ?route, "ALERT: ❌ Tx Confirmed but REVERTED on-chain!");
                      nonce_manager.confirm_nonce_used(nonce).await;
+                     // Consider logging revert reason if available from trace
+                     // let trace = client.trace_transaction(submitted_tx_hash).await; etc.
                      return Err(eyre!("Transaction reverted on-chain: {}", submitted_tx_hash));
                 }
             }
@@ -297,7 +355,7 @@ pub async fn submit_arbitrage_transaction(
 }
 
 // --- Helper functions (send_alchemy_private_tx, send_flashbots_private_tx, submit_sequentially) ---
-// ... (remain unchanged) ...
+// (remain unchanged)
 async fn send_alchemy_private_tx( provider: &Provider<Http>, rlp_hex: &str ) -> Result<TxHash> {
     let method="alchemy_sendPrivateTransaction";
     let params=AlchemyPrivateTxParams{tx:rlp_hex};
@@ -342,7 +400,7 @@ async fn submit_sequentially(
         if !url.is_empty() {
              match try_relay(url, rlp_hex).await {
                  Ok(hash) => return Ok(hash),
-                 Err(_) => {}
+                 Err(_) => {} // Ignore error, try next
              }
         }
     }
@@ -350,7 +408,7 @@ async fn submit_sequentially(
          if !url.is_empty() {
             match try_relay(url, rlp_hex).await {
                 Ok(hash) => return Ok(hash),
-                Err(_) => {}
+                Err(_) => {} // Ignore error, try next
             }
          }
     }

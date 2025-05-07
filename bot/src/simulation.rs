@@ -1,15 +1,14 @@
-// src/simulation.rs
+// bot/src/simulation.rs
 //! Handles off-chain simulation of arbitrage routes to determine profitability
 //! and optimal loan amounts before attempting on-chain execution.
 
 use crate::bindings::{
     quoter_v2 as quoter_v2_bindings,
     velodrome_router as velo_router_bindings,
-    QuoterV2, VelodromeRouter,
+    QuoterV2,
+    VelodromeRouter,
 };
 use crate::config::Config;
-// encoding moved to transaction.rs where it's used
-// use crate::encoding::encode_user_data;
 use crate::gas::estimate_flash_loan_gas;
 use crate::state::{AppState, DexType, PoolSnapshot};
 use crate::path_optimizer::RouteCandidate;
@@ -19,15 +18,21 @@ use ethers::{
     types::{Address, I256, U256},
     utils::{format_units, parse_units},
 };
-use eyre::{eyre, Result, WrapErr};
+use eyre::{eyre, Result, WrapErr}; // Keep WrapErr
 use std::sync::Arc;
+use tokio::time::{timeout, Duration};
 use tracing::{debug, error, info, instrument, trace, warn};
+use std::str::FromStr; // Needed for Address::from_str
 
 // Configuration Constants for Simulation
 const V2_RESERVE_PERCENTAGE_LIMIT: u64 = 5; // Max loan size as % of V2 pool reserve
 
+// Hardcoded Velodrome Router V2 Implementation address for local simulation workaround
+#[cfg(feature = "local_simulation")]
+const VELO_ROUTER_IMPL_ADDR_FOR_SIM: &str = "0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858";
+
+
 /// Simulates a single swap on a DEX using appropriate on-chain query methods.
-/// **NOTE:** Includes a workaround for local simulation hitting Anvil Velo Router issues.
 #[allow(clippy::too_many_arguments)]
 #[instrument(skip(app_state, client), level = "trace", fields(dex = %dex_type, token_in = %token_in, token_out = %token_out, amount_in = %amount_in_wei))]
 pub async fn simulate_swap(
@@ -49,65 +54,46 @@ pub async fn simulate_swap(
             let fee = uni_pool_fee.ok_or_else(|| eyre!("Missing UniV3 pool fee for simulation"))?;
             let params = quoter_v2_bindings::QuoteExactInputSingleParams { token_in, token_out, amount_in: amount_in_wei, fee, sqrt_price_limit_x96: U256::zero(), };
             trace!(?params, "Calling QuoterV2 quoteExactInputSingle");
-            let quote_result = quoter.quote_exact_input_single(params).call().await .wrap_err_with(|| format!("QuoterV2 simulation failed for pair {token_in:?} -> {token_out:?}"))?;
+            let quote_result = quoter.quote_exact_input_single(params).call().await
+                .wrap_err_with(|| format!("QuoterV2 simulation failed for pair {token_in:?} -> {token_out:?}"))?; // wrap_err_with is fine here for Result<T, E> from await
             debug!(amount_out = %quote_result.0, "QuoterV2 simulation successful");
             Ok(quote_result.0)
         }
         DexType::VelodromeV2 | DexType::Aerodrome => {
-            // --- START: Local Simulation Workaround ---
+            let mut router_address_to_use = if dex_type == DexType::VelodromeV2 {
+                app_state.config.velo_router_addr
+            } else {
+                app_state.config.aerodrome_router_addr.ok_or_else(|| eyre!("Aerodrome router address missing for simulation"))?
+            };
+
             #[cfg(feature = "local_simulation")]
             {
-                 warn!(dex=%dex_type, "LOCAL SIMULATION WORKAROUND: Bypassing Velodrome/Aerodrome getAmountsOut call due to Anvil fork issues.");
-                 // Calculate a plausible output amount.
-                 // Example: Assume roughly 1:1 price for stable, or use a fixed price for volatile.
-                 // This is NOT accurate, just prevents the simulation from failing entirely.
-                 let estimated_out = if is_stable_route.unwrap_or(false) {
-                     // Roughly 1:1 for stable swap (adjust decimals if needed)
-                     // Example: If swapping 100 USDC (6 dec) for WETH (18 dec), estimate ~0.05 WETH
-                     if token_in == app_state.usdc_address && token_out == app_state.weth_address {
-                         // Very rough estimate: 1 USDC -> 1/2000 WETH
-                         amount_in_wei / 2000u64
-                     } else if token_in == app_state.weth_address && token_out == app_state.usdc_address {
-                          // Very rough estimate: 1 WETH -> 2000 USDC
-                         amount_in_wei * 2000u64
-                     } else {
-                         amount_in_wei // Fallback 1:1 for other stables
-                     }
-
-                 } else {
-                     // Rough estimate for volatile
-                      if token_in == app_state.weth_address && token_out == app_state.usdc_address {
-                         amount_in_wei * 2000u64 // WETH -> USDC ~1:2000
-                      } else if token_in == app_state.usdc_address && token_out == app_state.weth_address {
-                         amount_in_wei / 2000u64 // USDC -> WETH ~2000:1
-                      } else {
-                         amount_in_wei // Fallback 1:1
-                      }
-                 };
-                 // Apply a small "fee" reduction to make it slightly less than input
-                 let simulated_out = estimated_out * 999u64 / 1000u64; // ~0.1% fee
-                 warn!(amount_in = %amount_in_wei, simulated_out = %simulated_out, "Using estimated output for local sim.");
-                 return Ok(simulated_out);
-            }
-            // --- END: Local Simulation Workaround ---
-
-            #[cfg(not(feature = "local_simulation"))]
-            {
-                 // Original code for non-simulation builds
-                let router_address = if dex_type == DexType::VelodromeV2 { app_state.config.velo_router_addr }
-                                     else { app_state.config.aerodrome_router_addr.ok_or_else(|| eyre!("Aerodrome router address missing for simulation"))? };
-                let factory_address = factory_addr.ok_or_else(|| eyre!("Missing Factory address for Velo/Aero route simulation"))?;
-                let stable = is_stable_route.ok_or_else(|| eyre!("Missing stability flag for Velo/Aero simulation"))?;
-                let router = VelodromeRouter::new(router_address, client);
-                let routes = vec![velo_router_bindings::Route { from: token_in, to: token_out, stable, factory: factory_address, }];
-                trace!(?routes, amount_in = %amount_in_wei, "Calling VelodromeRouter getAmountsOut");
-                match router.get_amounts_out(amount_in_wei, routes).call().await {
-                    Ok(amounts) if amounts.len() >= 2 => { debug!(amounts_out = ?amounts, "Velo/Aero getAmountsOut simulation successful"); Ok(amounts[1]) },
-                    Ok(amounts) => Err(eyre!("Invalid amounts array length returned from getAmountsOut: {}", amounts.len())),
-                    Err(e) => Err(eyre!(e).wrap_err("Velo/Aero getAmountsOut RPC call failed")),
+                if dex_type == DexType::VelodromeV2 {
+                    warn!("LOCAL SIMULATION: Using hardcoded VelodromeRouter IMPL address ({}) for VelodromeV2 simulate_swap.", VELO_ROUTER_IMPL_ADDR_FOR_SIM);
+                    router_address_to_use = Address::from_str(VELO_ROUTER_IMPL_ADDR_FOR_SIM)?;
                 }
-             }
+            }
 
+            let factory_address = factory_addr.ok_or_else(|| eyre!("Missing Factory address for Velo/Aero route simulation"))?;
+            let stable = is_stable_route.ok_or_else(|| eyre!("Missing stability flag for Velo/Aero simulation"))?;
+
+            let router = VelodromeRouter::new(router_address_to_use, client);
+            let routes = vec![velo_router_bindings::Route {
+                from: token_in,
+                to: token_out,
+                stable,
+                factory: factory_address,
+            }];
+            trace!(?routes, amount_in = %amount_in_wei, "Calling VelodromeRouter ({}) getAmountsOut", router_address_to_use);
+            match router.get_amounts_out(amount_in_wei, routes).call().await {
+                Ok(amounts) if amounts.len() >= 2 => {
+                    debug!(amounts_out = ?amounts, "Velo/Aero getAmountsOut simulation successful");
+                    Ok(amounts[1])
+                }
+                Ok(amounts) => Err(eyre!("Invalid amounts array length returned from getAmountsOut: {}", amounts.len())),
+                // Corrected line:
+                Err(e) => Err(eyre!(e).wrap_err(format!("Velo/Aero getAmountsOut RPC call failed for router {}, factory {}, stable {}", router_address_to_use, factory_address, stable))),
+            }
         }
         DexType::Unknown => Err(eyre!("Cannot simulate swap for Unknown DEX type")),
     }
@@ -138,14 +124,36 @@ pub async fn calculate_net_profit(
     let gross_profit_wei = I256::from_raw(final_amount_out_loan_token) - I256::from_raw(amount_in_wei);
     debug!(gross_profit_wei = %gross_profit_wei, "Gross profit calculated.");
     if gross_profit_wei <= I256::zero() { return Ok(gross_profit_wei); }
+    trace!("Estimating gas cost for net profit calculation...");
     let gas_price_wei_str = format!("{:.18}", gas_price_gwei); let gas_price_wei: U256 = parse_units(&gas_price_wei_str, "gwei")?.into();
     trace!(gas_price_gwei=%gas_price_gwei, gas_price_wei=%gas_price_wei, "Converted gas price");
     let effective_router_addr = if route.buy_dex_type.is_velo_style() || route.sell_dex_type.is_velo_style() { if route.buy_dex_type == DexType::Aerodrome || route.sell_dex_type == DexType::Aerodrome { config.aerodrome_router_addr.ok_or_else(|| eyre!("Aero router needed for encoding"))? } else { config.velo_router_addr } } else { config.velo_router_addr };
-
-    // Re-import encode_user_data locally as it was removed from top-level imports
     use crate::encoding::encode_user_data;
     let user_data_for_gas_est = encode_user_data( route.buy_pool_addr, route.sell_pool_addr, intermediate_token, route.zero_for_one_a, route.buy_dex_type.is_velo_style(), route.sell_dex_type.is_velo_style(), effective_router_addr, U256::zero(), U256::zero(), )?;
-    let gas_estimate_units = match estimate_flash_loan_gas( client.clone(), config.balancer_vault_address, config.arb_executor_address.ok_or_else(|| eyre!("Executor address missing for gas estimate"))?, loan_token, amount_in_wei, user_data_for_gas_est, ).await { Ok(est) => est, Err(e) => { warn!(error=?e, "Gas estimation failed, assuming high cost (route likely unprofitable)."); return Ok(I256::min_value()); } };
+    trace!("User data for gas estimate encoded.");
+    let gas_est_timeout = Duration::from_secs(10);
+    let gas_estimate_result = timeout(
+        gas_est_timeout,
+        estimate_flash_loan_gas(
+            client.clone(),
+            config.balancer_vault_address,
+            config.arb_executor_address.ok_or_else(|| eyre!("Executor address missing for gas estimate"))?,
+            loan_token,
+            amount_in_wei,
+            user_data_for_gas_est,
+        )
+    ).await;
+    let gas_estimate_units = match gas_estimate_result {
+        Ok(Ok(est)) => est,
+        Ok(Err(e)) => {
+            warn!(error=?e, "Gas estimation failed within net profit calc, assuming high cost.");
+            return Ok(I256::min_value());
+        }
+        Err(_) => {
+            warn!(timeout_secs = gas_est_timeout.as_secs(), "Gas estimation timed out within net profit calc, assuming high cost.");
+            return Ok(I256::min_value());
+        }
+    };
     trace!(gas_estimate_units = %gas_estimate_units, "Initial gas estimate received.");
     let buffered_gas_limit = gas_estimate_units * (100 + gas_limit_buffer_percentage) / 100; let final_gas_limit = std::cmp::max(buffered_gas_limit, U256::from(min_flashloan_gas_limit));
     trace!(buffered_gas_limit = %buffered_gas_limit, min_flashloan_gas_limit = %min_flashloan_gas_limit, final_gas_limit = %final_gas_limit, "Calculated final gas limit");
@@ -158,6 +166,7 @@ pub async fn calculate_net_profit(
 
 
 /// Searches for the optimal flash loan amount for a given route candidate.
+// (Function remains unchanged)
 #[allow(clippy::too_many_arguments)]
 #[instrument(skip_all, level = "info", fields( route = ?route ))]
 pub async fn find_optimal_loan_amount(
@@ -168,7 +177,6 @@ pub async fn find_optimal_loan_amount(
     sell_pool_snapshot: Option<&PoolSnapshot>,
     gas_price_gwei: f64,
 ) -> Result<Option<(U256, I256)>> {
-    // ... (rest of the function remains the same) ...
     info!("Searching optimal loan amount...");
     let config = &app_state.config; let mut best_loan_amount_wei = U256::zero(); let mut max_net_profit_wei = I256::min_value();
     let min_loan_weth = config.min_loan_amount_weth; let config_max_loan_weth = config.max_loan_amount_weth;
