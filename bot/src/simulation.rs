@@ -14,11 +14,14 @@ use crate::state::{AppState, DexType, PoolSnapshot};
 use crate::path_optimizer::RouteCandidate;
 use crate::utils::{f64_to_wei, ToF64Lossy};
 use ethers::{
+    // abi::AbiDecode, // Removed unused import
+    contract::ContractError, // For matching specific contract errors
     prelude::{Http, LocalWallet, Provider, SignerMiddleware},
-    types::{Address, I256, U256},
+    types::{Address, Bytes, I256, U256, Selector}, // Added Bytes for revert data compare
     utils::{format_units, parse_units},
 };
-use eyre::{eyre, Result, WrapErr}; // Keep WrapErr
+use eyre::{eyre, Result, WrapErr};
+use hex; // Needed for hex decoding selector string
 use std::sync::Arc;
 use tokio::time::{timeout, Duration};
 use tracing::{debug, error, info, instrument, trace, warn};
@@ -30,6 +33,8 @@ const V2_RESERVE_PERCENTAGE_LIMIT: u64 = 5; // Max loan size as % of V2 pool res
 // Hardcoded Velodrome Router V2 Implementation address for local simulation workaround
 #[cfg(feature = "local_simulation")]
 const VELO_ROUTER_IMPL_ADDR_FOR_SIM: &str = "0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858";
+#[cfg(feature = "local_simulation")]
+const PAIR_DOES_NOT_EXIST_SELECTOR_STR: &str = "9a73ab46"; // Without 0x prefix for hex::decode
 
 
 /// Simulates a single swap on a DEX using appropriate on-chain query methods.
@@ -55,7 +60,7 @@ pub async fn simulate_swap(
             let params = quoter_v2_bindings::QuoteExactInputSingleParams { token_in, token_out, amount_in: amount_in_wei, fee, sqrt_price_limit_x96: U256::zero(), };
             trace!(?params, "Calling QuoterV2 quoteExactInputSingle");
             let quote_result = quoter.quote_exact_input_single(params).call().await
-                .wrap_err_with(|| format!("QuoterV2 simulation failed for pair {token_in:?} -> {token_out:?}"))?; // wrap_err_with is fine here for Result<T, E> from await
+                .wrap_err_with(|| format!("QuoterV2 simulation failed for pair {token_in:?} -> {token_out:?}"))?;
             debug!(amount_out = %quote_result.0, "QuoterV2 simulation successful");
             Ok(quote_result.0)
         }
@@ -65,34 +70,76 @@ pub async fn simulate_swap(
             } else {
                 app_state.config.aerodrome_router_addr.ok_or_else(|| eyre!("Aerodrome router address missing for simulation"))?
             };
+            let mut attempted_impl_call = false;
 
             #[cfg(feature = "local_simulation")]
             {
                 if dex_type == DexType::VelodromeV2 {
-                    warn!("LOCAL SIMULATION: Using hardcoded VelodromeRouter IMPL address ({}) for VelodromeV2 simulate_swap.", VELO_ROUTER_IMPL_ADDR_FOR_SIM);
+                    warn!("LOCAL SIMULATION: Attempting VelodromeV2 simulate_swap with IMPL address ({}) due to Anvil proxy issues.", VELO_ROUTER_IMPL_ADDR_FOR_SIM);
                     router_address_to_use = Address::from_str(VELO_ROUTER_IMPL_ADDR_FOR_SIM)?;
+                    attempted_impl_call = true;
                 }
             }
 
-            let factory_address = factory_addr.ok_or_else(|| eyre!("Missing Factory address for Velo/Aero route simulation"))?;
-            let stable = is_stable_route.ok_or_else(|| eyre!("Missing stability flag for Velo/Aero simulation"))?;
+            let factory_address_for_call = factory_addr.ok_or_else(|| eyre!("Missing Factory address for Velo/Aero route simulation"))?;
+            let stable_for_call = is_stable_route.ok_or_else(|| eyre!("Missing stability flag for Velo/Aero simulation"))?;
 
             let router = VelodromeRouter::new(router_address_to_use, client);
             let routes = vec![velo_router_bindings::Route {
                 from: token_in,
                 to: token_out,
-                stable,
-                factory: factory_address,
+                stable: stable_for_call,
+                factory: factory_address_for_call,
             }];
             trace!(?routes, amount_in = %amount_in_wei, "Calling VelodromeRouter ({}) getAmountsOut", router_address_to_use);
-            match router.get_amounts_out(amount_in_wei, routes).call().await {
+
+            match router.get_amounts_out(amount_in_wei, routes.clone()).call().await {
                 Ok(amounts) if amounts.len() >= 2 => {
-                    debug!(amounts_out = ?amounts, "Velo/Aero getAmountsOut simulation successful");
+                    debug!(amounts_out = ?amounts, "Velo/Aero getAmountsOut simulation successful on address {}", router_address_to_use);
                     Ok(amounts[1])
                 }
                 Ok(amounts) => Err(eyre!("Invalid amounts array length returned from getAmountsOut: {}", amounts.len())),
-                // Corrected line:
-                Err(e) => Err(eyre!(e).wrap_err(format!("Velo/Aero getAmountsOut RPC call failed for router {}, factory {}, stable {}", router_address_to_use, factory_address, stable))),
+                Err(e) => {
+                    #[cfg(feature = "local_simulation")]
+                    if attempted_impl_call {
+                        // Fix E0599: Parse hex string to bytes, then create Selector ([u8; 4])
+                        let selector_bytes = hex::decode(PAIR_DOES_NOT_EXIST_SELECTOR_STR)?;
+                        let pair_does_not_exist_selector: Selector = selector_bytes.try_into()
+                            .map_err(|_| eyre!("Failed to convert decoded hex to Selector bytes"))?;
+
+                        // Fix E0599: Match directly on ContractError::Revert variant
+                        if let ContractError::Revert(data) = &e {
+                            // Compare Bytes with Selector bytes
+                            if data.0.starts_with(&pair_does_not_exist_selector) {
+                                warn!("LOCAL SIMULATION FALLBACK: Velodrome IMPL call reverted with PairDoesNotExist. Estimating output.");
+                            } else {
+                                warn!("LOCAL SIMULATION FALLBACK: Velodrome IMPL call reverted (data: {:?}). Estimating output.", data.0);
+                            }
+                        } else if e.to_string().contains("failed to decode empty bytes") {
+                             warn!("LOCAL SIMULATION FALLBACK: Velodrome IMPL call failed to decode (empty bytes). Estimating output.");
+                        } else {
+                            // Unexpected error even when calling IMPL
+                            // Fix E0599: Use wrap_err
+                            return Err(eyre!(e).wrap_err(format!("Velo/Aero getAmountsOut RPC call FAILED UNEXPECTEDLY on IMPL address {}, factory {}, stable {}", router_address_to_use, factory_address_for_call, stable_for_call)));
+                        }
+
+                        // Fallback estimation logic (same as before)
+                        let estimated_out = if stable_for_call {
+                             if token_in == app_state.usdc_address && token_out == app_state.weth_address { amount_in_wei / 2000u64 }
+                             else if token_in == app_state.weth_address && token_out == app_state.usdc_address { amount_in_wei * 2000u64 }
+                             else { amount_in_wei }
+                        } else {
+                             if token_in == app_state.weth_address && token_out == app_state.usdc_address { amount_in_wei * 2000u64 }
+                             else if token_in == app_state.usdc_address && token_out == app_state.weth_address { amount_in_wei / 2000u64 }
+                             else { amount_in_wei }
+                        };
+                        let simulated_out = estimated_out * 999u64 / 1000u64;
+                        warn!(amount_in = %amount_in_wei, simulated_out = %simulated_out, "Using ESTIMATED output for local sim due to IMPL call revert/failure.");
+                        return Ok(simulated_out);
+                    }
+                    // If not local_simulation or not attempted_impl_call, propagate original error
+                    Err(eyre!(e).wrap_err(format!("Velo/Aero getAmountsOut RPC call failed for router {}, factory {}, stable {}", router_address_to_use, factory_address_for_call, stable_for_call)))
+                }
             }
         }
         DexType::Unknown => Err(eyre!("Cannot simulate swap for Unknown DEX type")),
