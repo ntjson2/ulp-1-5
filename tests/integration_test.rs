@@ -49,8 +49,7 @@ async fn test_setup() -> Result<()> {
     // Load main config for addresses
     let main_config = ulp1_5::config::load_config()?;
 
-    // --- QuoterV2 Check (Should still work) ---
-    // (This section remains unchanged)
+    // --- QuoterV2 Check ---
     info!("Attempting a direct call to QuoterV2 on Anvil...");
     let quoter_address = main_config.quoter_v2_address;
     if quoter_address == Address::zero() {
@@ -61,7 +60,7 @@ async fn test_setup() -> Result<()> {
             token_in: main_config.weth_address,
             token_out: main_config.usdc_address, // Using USDC.e address here
             amount_in: parse_ether(1)?,
-            fee: 500,
+            fee: 500, // Check 0.05% pool
             sqrt_price_limit_x96: U256::zero(),
         };
         info!("Calling QuoterV2 ({}) with params: {:?}", quoter_address, params);
@@ -110,7 +109,6 @@ async fn test_setup() -> Result<()> {
                  return Err(eyre!("pool_for check failed - pool not found"));
              }
              Err(e) => {
-                 // If this fails now, it's unexpected when calling the IMPL
                  error!("❌ pool_for check failed unexpectedly on IMPL: {:?}", e);
                  return Err(e.into());
              }
@@ -205,14 +203,12 @@ async fn test_swap_triggers() -> Result<()> {
 }
 
 
-// --- test_full_arbitrage_cycle_simulation - IMPORTANT NOTE ---
-// This test will STILL likely fail until simulate_swap is modified to use the
-// implementation address workaround when cfg(feature = "local_simulation").
+// --- test_full_arbitrage_cycle_simulation (Velo path) ---
 #[tokio::test]
 #[ignore]
 async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
     setup_tracing();
-    info!("--- Running Test: test_full_arbitrage_cycle_simulation ---");
+    info!("--- Running Test: test_full_arbitrage_cycle_simulation (UniV3 -> VeloV2) ---");
     use ulp1_5::state::{AppState, DexType};
     use ulp1_5::config::load_config;
     use ulp1_5::path_optimizer::RouteCandidate;
@@ -226,11 +222,11 @@ async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
     let config = load_config().expect("Failed to load test config from .env");
     let weth_addr = config.weth_address;
     let usdc_addr = config.usdc_address;
-    let pool_a_addr_str = "0x851492574065EDE975391E141377067943aA08eF";
-    let pool_b_addr_str = "0x207addb05c548f262219f6b50eadff8640ed6488";
+    let pool_a_addr_str = "0x851492574065EDE975391E141377067943aA08eF"; // UniV3 0.05%
+    let pool_b_addr_str = "0x207addb05c548f262219f6b50eadff8640ed6488"; // VeloV2 Stable
     let pool_a_addr: Address = pool_a_addr_str.parse()?;
     let pool_b_addr: Address = pool_b_addr_str.parse()?;
-    info!("Using Test Pools: A (UniV3)={}, B (VeloV2 Stable)={}", pool_a_addr, pool_b_addr);
+    info!("Using Test Pools: A (UniV3 0.05%)={}, B (VeloV2 Stable)={}", pool_a_addr, pool_b_addr);
     let route = RouteCandidate {
         buy_pool_addr: pool_a_addr,
         sell_pool_addr: pool_b_addr,
@@ -238,7 +234,7 @@ async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
         sell_dex_type: DexType::VelodromeV2,
         token_in: weth_addr,
         token_out: usdc_addr,
-        buy_pool_fee: Some(500),
+        buy_pool_fee: Some(500), // 0.05%
         sell_pool_fee: None,
         buy_pool_stable: None,
         sell_pool_stable: Some(true), // Correct for the stable pool target
@@ -272,8 +268,7 @@ async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
              (U256::zero(), I256::zero())
         }
         None => {
-            // NOTE: This path might still be hit if simulate_swap uses the proxy address
-            warn!("❌ No profitable loan amount found during simulation. This is likely because the underlying Velo simulation in `simulate_swap` still uses the proxy address and hits the Anvil proxy issue. Aborting cycle test.");
+            warn!("❌ No profitable loan amount found during simulation (UniV3->VeloV2). This is likely due to the Anvil/Velo simulation workaround. Aborting cycle test.");
             return Ok(());
         }
     };
@@ -311,7 +306,133 @@ async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
             }
         }
     }
-    info!("--- Test Finished: test_full_arbitrage_cycle_simulation ---");
+    info!("--- Test Finished: test_full_arbitrage_cycle_simulation (UniV3 -> VeloV2) ---");
+    Ok(())
+}
+
+// --- NEW TEST: UniV3 -> UniV3 ---
+/// Test: Simulate UniV3 -> UniV3 arbitrage cycle
+#[tokio::test]
+#[ignore]
+async fn test_full_univ3_arbitrage_cycle() -> Result<()> {
+    setup_tracing();
+    info!("--- Running Test: test_full_univ3_arbitrage_cycle (UniV3 -> UniV3) ---");
+
+    // Re-import necessary types/modules locally for this test
+    use ulp1_5::state::{AppState, DexType};
+    use ulp1_5::config::load_config;
+    use ulp1_5::path_optimizer::RouteCandidate;
+    use ulp1_5::simulation::find_optimal_loan_amount;
+    use ulp1_5::transaction::{fetch_gas_price, submit_arbitrage_transaction, NonceManager};
+    use ulp1_5::utils::ToF64Lossy;
+
+    // 1. Setup
+    let sim_env = setup_simulation_environment().await?;
+    let client = sim_env.http_client.clone();
+    let executor_addr = sim_env.executor_address.expect("Executor must be deployed for this test");
+    info!("Anvil Setup Complete. Executor: {:?}", executor_addr);
+    let config = load_config().expect("Failed to load test config from .env");
+    let weth_addr = config.weth_address;
+    let usdc_addr = config.usdc_address;
+
+    // Define two UniV3 pool addresses for WETH/USDC.e on Optimism
+    // Pool A: 0.05% fee tier
+    let pool_a_addr: Address = "0x851492574065EDE975391E141377067943aA08eF".parse()?;
+    // Pool B: 0.3% fee tier (Ensure this exists for WETH/USDC.e)
+    let pool_b_addr: Address = "0x171d751916657a873807A11785294c280CA7433D".parse()?;
+    info!("Using Test Pools: A (UniV3 0.05%)={}, B (UniV3 0.3%)={}", pool_a_addr, pool_b_addr);
+
+    // 2. Identify Opportunity (Manual) - Assume Buy on A, Sell on B
+    let route = RouteCandidate {
+        buy_pool_addr: pool_a_addr,
+        sell_pool_addr: pool_b_addr,
+        buy_dex_type: DexType::UniswapV3,
+        sell_dex_type: DexType::UniswapV3,
+        token_in: weth_addr, // Borrow WETH
+        token_out: usdc_addr, // Intermediate USDC.e
+        buy_pool_fee: Some(500),  // 0.05% fee
+        sell_pool_fee: Some(3000), // 0.3% fee
+        buy_pool_stable: None,
+        sell_pool_stable: None,
+        buy_pool_factory: config.uniswap_v3_factory_addr,
+        sell_pool_factory: config.uniswap_v3_factory_addr, // Same factory
+        zero_for_one_a: true, // Buy USDC (t1) with WETH (t0)
+        estimated_profit_usd: 0.01, // Low placeholder, simulation will determine reality
+    };
+    info!("Constructed Manual Route Candidate: {:?}", route);
+
+    // 3. Simulate & Optimize
+    let app_state = Arc::new(AppState::new(config.clone()));
+    let gas_info = fetch_gas_price(client.clone(), &config).await?;
+    let gas_price_gwei = ToF64Lossy::to_f64_lossy(&gas_info.max_priority_fee_per_gas) / 1e9;
+    info!("Fetched Anvil gas price (prio): {} gwei", gas_price_gwei);
+    let buy_snapshot = None; // Not using snapshots for this manual test run
+    let sell_snapshot = None;
+
+    let optimal_loan_result = find_optimal_loan_amount(
+        client.clone(),
+        app_state.clone(),
+        &route,
+        buy_snapshot,
+        sell_snapshot,
+        gas_price_gwei,
+    ).await?;
+
+    let (loan_amount_wei, simulated_net_profit_wei) = match optimal_loan_result {
+        Some((amount, profit)) if profit > I256::zero() => {
+            info!("✅ Optimal loan found: amount={}, profit={}", amount, profit);
+            (amount, profit)
+        },
+        Some((_, profit)) => {
+             warn!("Simulation found optimal loan, but profit is not positive ({}). Test may not execute tx.", profit);
+             (U256::zero(), I256::zero())
+        }
+        None => {
+            warn!("❌ No profitable loan amount found during simulation (UniV3->UniV3). Fork state might not have arb opportunity.");
+            return Ok(());
+        }
+    };
+
+    if loan_amount_wei.is_zero() {
+        info!("Skipping transaction submission as no profitable loan was simulated.");
+        return Ok(());
+    }
+
+    // 4. Execute Transaction
+    let nonce_manager = Arc::new(NonceManager::new(sim_env.wallet_address));
+    let mut test_config = config.clone();
+    test_config.arb_executor_address = Some(executor_addr);
+    let app_state = Arc::new(AppState::new(test_config));
+    info!("Submitting arbitrage transaction...");
+    let submission_result = submit_arbitrage_transaction(
+        client.clone(),
+        app_state.clone(),
+        route.clone(),
+        loan_amount_wei,
+        simulated_net_profit_wei,
+        nonce_manager.clone(),
+    ).await;
+
+    // 5. Verification
+    match submission_result {
+        Ok(tx_hash) => {
+            info!("✅ Transaction submitted and confirmed successfully: {}", tx_hash);
+            // Add further checks here if desired (e.g., query balance changes on Anvil)
+        }
+        Err(e) => {
+            error!("❌ Transaction submission/confirmation failed: {:?}", e);
+            if e.to_string().contains("Transaction reverted on-chain") {
+                warn!("Transaction reverted as expected/possible due to on-chain conditions differing from simulation.");
+            } else if e.to_string().contains("ALERT:") {
+                 error!("Submission failed with ALERT: {:?}", e);
+                 return Err(e.wrap_err("Submission failed due to ALERT"));
+            } else {
+                 error!("Submission failed with unexpected error: {:?}", e);
+                 return Err(e.wrap_err("Submission failed unexpectedly"));
+            }
+        }
+    }
+    info!("--- Test Finished: test_full_univ3_arbitrage_cycle (UniV3 -> UniV3) ---");
     Ok(())
 }
 

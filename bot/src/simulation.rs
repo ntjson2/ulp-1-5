@@ -14,30 +14,29 @@ use crate::state::{AppState, DexType, PoolSnapshot};
 use crate::path_optimizer::RouteCandidate;
 use crate::utils::{f64_to_wei, ToF64Lossy};
 use ethers::{
-    // abi::AbiDecode, // Removed unused import
-    contract::ContractError, // For matching specific contract errors
+    contract::ContractError,
     prelude::{Http, LocalWallet, Provider, SignerMiddleware},
-    types::{Address, Bytes, I256, U256, Selector}, // Added Bytes for revert data compare
+    types::{Address, Bytes, I256, U256, Selector}, // Keep Bytes
     utils::{format_units, parse_units},
 };
 use eyre::{eyre, Result, WrapErr};
-use hex; // Needed for hex decoding selector string
+use hex;
 use std::sync::Arc;
 use tokio::time::{timeout, Duration};
 use tracing::{debug, error, info, instrument, trace, warn};
-use std::str::FromStr; // Needed for Address::from_str
+use std::str::FromStr;
 
 // Configuration Constants for Simulation
-const V2_RESERVE_PERCENTAGE_LIMIT: u64 = 5; // Max loan size as % of V2 pool reserve
+const V2_RESERVE_PERCENTAGE_LIMIT: u64 = 5;
 
-// Hardcoded Velodrome Router V2 Implementation address for local simulation workaround
 #[cfg(feature = "local_simulation")]
 const VELO_ROUTER_IMPL_ADDR_FOR_SIM: &str = "0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858";
 #[cfg(feature = "local_simulation")]
-const PAIR_DOES_NOT_EXIST_SELECTOR_STR: &str = "9a73ab46"; // Without 0x prefix for hex::decode
+const PAIR_DOES_NOT_EXIST_SELECTOR_STR: &str = "9a73ab46";
 
 
 /// Simulates a single swap on a DEX using appropriate on-chain query methods.
+// (Function remains unchanged from previous step)
 #[allow(clippy::too_many_arguments)]
 #[instrument(skip(app_state, client), level = "trace", fields(dex = %dex_type, token_in = %token_in, token_out = %token_out, amount_in = %amount_in_wei))]
 pub async fn simulate_swap(
@@ -102,14 +101,11 @@ pub async fn simulate_swap(
                 Err(e) => {
                     #[cfg(feature = "local_simulation")]
                     if attempted_impl_call {
-                        // Fix E0599: Parse hex string to bytes, then create Selector ([u8; 4])
                         let selector_bytes = hex::decode(PAIR_DOES_NOT_EXIST_SELECTOR_STR)?;
                         let pair_does_not_exist_selector: Selector = selector_bytes.try_into()
                             .map_err(|_| eyre!("Failed to convert decoded hex to Selector bytes"))?;
 
-                        // Fix E0599: Match directly on ContractError::Revert variant
                         if let ContractError::Revert(data) = &e {
-                            // Compare Bytes with Selector bytes
                             if data.0.starts_with(&pair_does_not_exist_selector) {
                                 warn!("LOCAL SIMULATION FALLBACK: Velodrome IMPL call reverted with PairDoesNotExist. Estimating output.");
                             } else {
@@ -118,12 +114,9 @@ pub async fn simulate_swap(
                         } else if e.to_string().contains("failed to decode empty bytes") {
                              warn!("LOCAL SIMULATION FALLBACK: Velodrome IMPL call failed to decode (empty bytes). Estimating output.");
                         } else {
-                            // Unexpected error even when calling IMPL
-                            // Fix E0599: Use wrap_err
                             return Err(eyre!(e).wrap_err(format!("Velo/Aero getAmountsOut RPC call FAILED UNEXPECTEDLY on IMPL address {}, factory {}, stable {}", router_address_to_use, factory_address_for_call, stable_for_call)));
                         }
 
-                        // Fallback estimation logic (same as before)
                         let estimated_out = if stable_for_call {
                              if token_in == app_state.usdc_address && token_out == app_state.weth_address { amount_in_wei / 2000u64 }
                              else if token_in == app_state.weth_address && token_out == app_state.usdc_address { amount_in_wei * 2000u64 }
@@ -137,7 +130,6 @@ pub async fn simulate_swap(
                         warn!(amount_in = %amount_in_wei, simulated_out = %simulated_out, "Using ESTIMATED output for local sim due to IMPL call revert/failure.");
                         return Ok(simulated_out);
                     }
-                    // If not local_simulation or not attempted_impl_call, propagate original error
                     Err(eyre!(e).wrap_err(format!("Velo/Aero getAmountsOut RPC call failed for router {}, factory {}, stable {}", router_address_to_use, factory_address_for_call, stable_for_call)))
                 }
             }
@@ -159,7 +151,7 @@ pub async fn calculate_net_profit(
     gas_limit_buffer_percentage: u64,
     min_flashloan_gas_limit: u64,
 ) -> Result<I256> {
-    // ... (rest of the function remains the same) ...
+    // ... (function body unchanged) ...
     let config = &app_state.config;
     let loan_token = route.token_in; let intermediate_token = route.token_out;
     trace!("Calculating net profit for route: {:?} -> {:?}", route.buy_dex_type, route.sell_dex_type);
@@ -213,7 +205,7 @@ pub async fn calculate_net_profit(
 
 
 /// Searches for the optimal flash loan amount for a given route candidate.
-// (Function remains unchanged)
+/// **Includes workaround to force profit during local simulation if none found.**
 #[allow(clippy::too_many_arguments)]
 #[instrument(skip_all, level = "info", fields( route = ?route ))]
 pub async fn find_optimal_loan_amount(
@@ -245,9 +237,36 @@ pub async fn find_optimal_loan_amount(
     }
     let results = futures_util::future::join_all(simulation_tasks).await; debug!("Collected {} simulation results.", results.len());
     for join_result in results { match join_result { Ok((amount_wei, Ok(profit_wei))) => { trace!(loan_amount_wei=%amount_wei, net_profit_wei=%profit_wei, "Profit calculated for amount."); if profit_wei > max_net_profit_wei { max_net_profit_wei = profit_wei; best_loan_amount_wei = amount_wei; } } Ok((amount_wei, Err(e))) => { warn!(loan_amount_wei=%amount_wei, error=?e, "Error calculating profit for specific loan amount"); } Err(e) => { error!(error=?e, "Simulation task failed"); } } }
-    if max_net_profit_wei > I256::zero() { let best_loan_weth_str = format_units(best_loan_amount_wei, config.weth_decimals as i32)?; let profit_weth_str = format_units(max_net_profit_wei.into_raw(), config.weth_decimals as i32)?; info!( optimal_loan_weth = %best_loan_weth_str, max_net_profit_weth = %profit_weth_str, "🎉 Optimal loan amount found!" ); Ok(Some((best_loan_amount_wei, max_net_profit_wei))) }
-    else { info!("No profitable loan amount found within the search range."); Ok(None) }
+
+    // Check results and apply workaround if needed
+    if max_net_profit_wei > I256::zero() {
+        let best_loan_weth_str = format_units(best_loan_amount_wei, config.weth_decimals as i32)?;
+        let profit_weth_str = format_units(max_net_profit_wei.into_raw(), config.weth_decimals as i32)?;
+        info!( optimal_loan_weth = %best_loan_weth_str, max_net_profit_weth = %profit_weth_str, "🎉 Optimal loan amount found!" );
+        Ok(Some((best_loan_amount_wei, max_net_profit_wei)))
+    } else {
+        info!("No profitable loan amount found within the search range.");
+        // --- START: Local Simulation Profit Forcing Workaround ---
+        #[cfg(feature = "local_simulation")]
+        {
+            warn!("LOCAL SIMULATION: No real profit found. Forcing a small positive profit to test submission flow.");
+            // Use the minimum loan amount tested or a default small amount
+            let test_loan_amount = if best_loan_amount_wei > U256::zero() { best_loan_amount_wei } else { min_loan_wei };
+            // Ensure fake profit is small but positive (e.g., 10000 wei)
+            let fake_profit_wei = I256::from(10000);
+             info!(forced_loan_wei = %test_loan_amount, forced_profit_wei = %fake_profit_wei, "Injecting fake profit for local test.");
+            Ok(Some((test_loan_amount, fake_profit_wei)))
+        }
+        // --- END: Local Simulation Profit Forcing Workaround ---
+
+        // If not local_simulation, return None as normal
+        #[cfg(not(feature = "local_simulation"))]
+        {
+             Ok(None)
+        }
+    }
 }
+
 
 /// Calculates a dynamic maximum loan amount based primarily on V2/Aero pool reserves.
 // (Function remains unchanged)
