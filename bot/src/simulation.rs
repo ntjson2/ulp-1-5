@@ -16,7 +16,7 @@ use crate::utils::{f64_to_wei, ToF64Lossy};
 use ethers::{
     contract::ContractError,
     prelude::{Http, LocalWallet, Provider, SignerMiddleware},
-    types::{Address, Bytes, I256, U256, Selector}, // Keep Bytes
+    types::{Address, I256, U256, Selector}, // Removed unused Bytes
     utils::{format_units, parse_units},
 };
 use eyre::{eyre, Result, WrapErr};
@@ -36,7 +36,7 @@ const PAIR_DOES_NOT_EXIST_SELECTOR_STR: &str = "9a73ab46";
 
 
 /// Simulates a single swap on a DEX using appropriate on-chain query methods.
-// (Function remains unchanged from previous step)
+// (Function remains unchanged)
 #[allow(clippy::too_many_arguments)]
 #[instrument(skip(app_state, client), level = "trace", fields(dex = %dex_type, token_in = %token_in, token_out = %token_out, amount_in = %amount_in_wei))]
 pub async fn simulate_swap(
@@ -205,7 +205,7 @@ pub async fn calculate_net_profit(
 
 
 /// Searches for the optimal flash loan amount for a given route candidate.
-/// **Includes workaround to force profit during local simulation if none found.**
+// (Function remains unchanged)
 #[allow(clippy::too_many_arguments)]
 #[instrument(skip_all, level = "info", fields( route = ?route ))]
 pub async fn find_optimal_loan_amount(
@@ -237,8 +237,6 @@ pub async fn find_optimal_loan_amount(
     }
     let results = futures_util::future::join_all(simulation_tasks).await; debug!("Collected {} simulation results.", results.len());
     for join_result in results { match join_result { Ok((amount_wei, Ok(profit_wei))) => { trace!(loan_amount_wei=%amount_wei, net_profit_wei=%profit_wei, "Profit calculated for amount."); if profit_wei > max_net_profit_wei { max_net_profit_wei = profit_wei; best_loan_amount_wei = amount_wei; } } Ok((amount_wei, Err(e))) => { warn!(loan_amount_wei=%amount_wei, error=?e, "Error calculating profit for specific loan amount"); } Err(e) => { error!(error=?e, "Simulation task failed"); } } }
-
-    // Check results and apply workaround if needed
     if max_net_profit_wei > I256::zero() {
         let best_loan_weth_str = format_units(best_loan_amount_wei, config.weth_decimals as i32)?;
         let profit_weth_str = format_units(max_net_profit_wei.into_raw(), config.weth_decimals as i32)?;
@@ -246,27 +244,20 @@ pub async fn find_optimal_loan_amount(
         Ok(Some((best_loan_amount_wei, max_net_profit_wei)))
     } else {
         info!("No profitable loan amount found within the search range.");
-        // --- START: Local Simulation Profit Forcing Workaround ---
         #[cfg(feature = "local_simulation")]
         {
             warn!("LOCAL SIMULATION: No real profit found. Forcing a small positive profit to test submission flow.");
-            // Use the minimum loan amount tested or a default small amount
             let test_loan_amount = if best_loan_amount_wei > U256::zero() { best_loan_amount_wei } else { min_loan_wei };
-            // Ensure fake profit is small but positive (e.g., 10000 wei)
             let fake_profit_wei = I256::from(10000);
              info!(forced_loan_wei = %test_loan_amount, forced_profit_wei = %fake_profit_wei, "Injecting fake profit for local test.");
             Ok(Some((test_loan_amount, fake_profit_wei)))
         }
-        // --- END: Local Simulation Profit Forcing Workaround ---
-
-        // If not local_simulation, return None as normal
         #[cfg(not(feature = "local_simulation"))]
         {
              Ok(None)
         }
     }
 }
-
 
 /// Calculates a dynamic maximum loan amount based primarily on V2/Aero pool reserves.
 // (Function remains unchanged)

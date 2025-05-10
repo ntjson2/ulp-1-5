@@ -4,14 +4,21 @@
 // Use ulp1_5:: prefix now that this is an external integration test
 use ulp1_5::local_simulator::{setup_simulation_environment, trigger_v3_swap, trigger_v2_swap};
 use ulp1_5::bindings::{UniswapV3Pool, VelodromeV2Pool, QuoterV2, VelodromeRouter};
+use ulp1_5::state::{self, AppState, DexType}; // Added self
+use ulp1_5::config::load_config;
+use ulp1_5::event_handler::handle_log_event;
+use ulp1_5::transaction::NonceManager;
+
 // Keep necessary imports
 use ethers::prelude::*;
+use ethers::providers::Middleware; // For client.get_logs
 use ethers::utils::{parse_ether, parse_units};
 use std::sync::Arc;
-use eyre::{Result, Report, eyre}; // Keep eyre
-use tracing::{info, error, warn};
+use eyre::{Result, Report, eyre};
+use tokio::time::Duration; // Added for sleep
+use tracing::{info, error, warn}; // Removed unused debug for now
 use tracing_subscriber::{fmt, EnvFilter};
-use std::str::FromStr; // Needed for Address::from_str
+use std::str::FromStr;
 
 
 // Helper to initialize tracing only once
@@ -47,7 +54,7 @@ async fn test_setup() -> Result<()> {
     info!("Executor address presence check passed.");
 
     // Load main config for addresses
-    let main_config = ulp1_5::config::load_config()?;
+    let main_config = load_config()?;
 
     // --- QuoterV2 Check ---
     info!("Attempting a direct call to QuoterV2 on Anvil...");
@@ -58,9 +65,9 @@ async fn test_setup() -> Result<()> {
         let quoter = QuoterV2::new(quoter_address, sim_env.http_client.clone());
         let params = ulp1_5::bindings::quoter_v2::QuoteExactInputSingleParams {
             token_in: main_config.weth_address,
-            token_out: main_config.usdc_address, // Using USDC.e address here
+            token_out: main_config.usdc_address,
             amount_in: parse_ether(1)?,
-            fee: 500, // Check 0.05% pool
+            fee: 500,
             sqrt_price_limit_x96: U256::zero(),
         };
         info!("Calling QuoterV2 ({}) with params: {:?}", quoter_address, params);
@@ -77,26 +84,19 @@ async fn test_setup() -> Result<()> {
 
     // --- Velo Router Check (Using HARDCODED Implementation Address for Local Sim) ---
     info!("Attempting a direct call to VelodromeRouter IMPL on Anvil (using hardcoded address)...");
-    let velo_router_proxy_address = main_config.velo_router_addr; // Keep for reference/logging if needed
+    let velo_router_proxy_address = main_config.velo_router_addr;
     let velo_factory_address = main_config.velodrome_v2_factory_addr;
 
     if velo_router_proxy_address == Address::zero() {
         warn!("VelodromeRouter proxy address is zero in config, skipping direct check.");
     } else {
-        // HARDCODE the known implementation address for local testing due to Anvil proxy issues
         let velo_router_impl_address = Address::from_str(VELO_ROUTER_IMPL_ADDR_FOR_TEST)?;
         info!("Using hardcoded IMPL address for local test: {}", velo_router_impl_address);
-
-        // Instantiate router binding at the IMPLEMENTATION address
         let router = VelodromeRouter::new(velo_router_impl_address, sim_env.http_client.clone());
-
-        // Params for getAmountsOut (USDC.e -> WETH - requires stable: true for the existing pool)
-        let amount_in = parse_units("100", 6)?.into(); // 100 USDC.e
-        let token_a = main_config.usdc_address; // USDC.e
-        let token_b = main_config.weth_address; // WETH
-        let stable_flag = true; // Use true for the existing WETH/USDC.e stable pool
-
-        // Check if the specific stable pool exists using the IMPL address
+        let amount_in = parse_units("100", 6)?.into();
+        let token_a = main_config.usdc_address;
+        let token_b = main_config.weth_address;
+        let stable_flag = true;
         info!("Checking pool_for with stable={} using IMPL address {}...", stable_flag, velo_router_impl_address);
         match router.pool_for(token_a, token_b, stable_flag, velo_factory_address).call().await {
              Ok(pool_addr) if pool_addr != Address::zero() => {
@@ -113,12 +113,10 @@ async fn test_setup() -> Result<()> {
                  return Err(e.into());
              }
          }
-
-        // Now attempt the actual getAmountsOut call using the IMPL address
         let routes = vec![ulp1_5::bindings::velodrome_router::Route {
             from: token_a,
             to: token_b,
-            stable: stable_flag, // Use true here as well
+            stable: stable_flag,
             factory: velo_factory_address,
         }];
         info!("Calling VelodromeRouter IMPL ({}) getAmountsOut with routes: {:?}", velo_router_impl_address, routes);
@@ -130,18 +128,15 @@ async fn test_setup() -> Result<()> {
             }
             Err(e) => {
                 error!("❌ Failed to call VelodromeRouter IMPL.getAmountsOut directly: {:?}", e);
-                 return Err(e.into()); // Fail the test if this diagnostic call fails
+                 return Err(e.into());
             }
         }
     }
-    // --- End Velo Router Check ---
-
-
     Ok(())
 }
 
-// --- test_swap_triggers remains unchanged ---
 /// Test: Triggering Swaps on Anvil Fork
+// (Remains unchanged)
 #[tokio::test]
 #[ignore]
 async fn test_swap_triggers() -> Result<()> {
@@ -202,18 +197,17 @@ async fn test_swap_triggers() -> Result<()> {
     Ok(())
 }
 
-
-// --- test_full_arbitrage_cycle_simulation (Velo path) ---
+/// Test: Simulate UniV3 -> VeloV2 arbitrage cycle
+// (Remains unchanged)
 #[tokio::test]
 #[ignore]
 async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
     setup_tracing();
     info!("--- Running Test: test_full_arbitrage_cycle_simulation (UniV3 -> VeloV2) ---");
-    use ulp1_5::state::{AppState, DexType};
-    use ulp1_5::config::load_config;
+    use ulp1_5::state::{AppState, DexType}; // Keep these local
     use ulp1_5::path_optimizer::RouteCandidate;
     use ulp1_5::simulation::find_optimal_loan_amount;
-    use ulp1_5::transaction::{fetch_gas_price, submit_arbitrage_transaction, NonceManager};
+    use ulp1_5::transaction::{fetch_gas_price, submit_arbitrage_transaction};
     use ulp1_5::utils::ToF64Lossy;
     let sim_env = setup_simulation_environment().await?;
     let client = sim_env.http_client.clone();
@@ -222,8 +216,8 @@ async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
     let config = load_config().expect("Failed to load test config from .env");
     let weth_addr = config.weth_address;
     let usdc_addr = config.usdc_address;
-    let pool_a_addr_str = "0x851492574065EDE975391E141377067943aA08eF"; // UniV3 0.05%
-    let pool_b_addr_str = "0x207addb05c548f262219f6b50eadff8640ed6488"; // VeloV2 Stable
+    let pool_a_addr_str = "0x851492574065EDE975391E141377067943aA08eF";
+    let pool_b_addr_str = "0x207addb05c548f262219f6b50eadff8640ed6488";
     let pool_a_addr: Address = pool_a_addr_str.parse()?;
     let pool_b_addr: Address = pool_b_addr_str.parse()?;
     info!("Using Test Pools: A (UniV3 0.05%)={}, B (VeloV2 Stable)={}", pool_a_addr, pool_b_addr);
@@ -234,10 +228,10 @@ async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
         sell_dex_type: DexType::VelodromeV2,
         token_in: weth_addr,
         token_out: usdc_addr,
-        buy_pool_fee: Some(500), // 0.05%
+        buy_pool_fee: Some(500),
         sell_pool_fee: None,
         buy_pool_stable: None,
-        sell_pool_stable: Some(true), // Correct for the stable pool target
+        sell_pool_stable: Some(true),
         buy_pool_factory: config.uniswap_v3_factory_addr,
         sell_pool_factory: config.velodrome_v2_factory_addr,
         zero_for_one_a: true,
@@ -310,23 +304,18 @@ async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
     Ok(())
 }
 
-// --- NEW TEST: UniV3 -> UniV3 ---
 /// Test: Simulate UniV3 -> UniV3 arbitrage cycle
+// (Remains unchanged)
 #[tokio::test]
 #[ignore]
 async fn test_full_univ3_arbitrage_cycle() -> Result<()> {
     setup_tracing();
     info!("--- Running Test: test_full_univ3_arbitrage_cycle (UniV3 -> UniV3) ---");
-
-    // Re-import necessary types/modules locally for this test
     use ulp1_5::state::{AppState, DexType};
-    use ulp1_5::config::load_config;
     use ulp1_5::path_optimizer::RouteCandidate;
     use ulp1_5::simulation::find_optimal_loan_amount;
-    use ulp1_5::transaction::{fetch_gas_price, submit_arbitrage_transaction, NonceManager};
+    use ulp1_5::transaction::{fetch_gas_price, submit_arbitrage_transaction};
     use ulp1_5::utils::ToF64Lossy;
-
-    // 1. Setup
     let sim_env = setup_simulation_environment().await?;
     let client = sim_env.http_client.clone();
     let executor_addr = sim_env.executor_address.expect("Executor must be deployed for this test");
@@ -334,41 +323,32 @@ async fn test_full_univ3_arbitrage_cycle() -> Result<()> {
     let config = load_config().expect("Failed to load test config from .env");
     let weth_addr = config.weth_address;
     let usdc_addr = config.usdc_address;
-
-    // Define two UniV3 pool addresses for WETH/USDC.e on Optimism
-    // Pool A: 0.05% fee tier
     let pool_a_addr: Address = "0x851492574065EDE975391E141377067943aA08eF".parse()?;
-    // Pool B: 0.3% fee tier (Ensure this exists for WETH/USDC.e)
-    let pool_b_addr: Address = "0x171d751916657a873807A11785294c280CA7433D".parse()?;
+    let pool_b_addr: Address = "0x171d751916657a873807a11785294c280ca7433D".parse()?;
     info!("Using Test Pools: A (UniV3 0.05%)={}, B (UniV3 0.3%)={}", pool_a_addr, pool_b_addr);
-
-    // 2. Identify Opportunity (Manual) - Assume Buy on A, Sell on B
     let route = RouteCandidate {
         buy_pool_addr: pool_a_addr,
         sell_pool_addr: pool_b_addr,
         buy_dex_type: DexType::UniswapV3,
         sell_dex_type: DexType::UniswapV3,
-        token_in: weth_addr, // Borrow WETH
-        token_out: usdc_addr, // Intermediate USDC.e
-        buy_pool_fee: Some(500),  // 0.05% fee
-        sell_pool_fee: Some(3000), // 0.3% fee
+        token_in: weth_addr,
+        token_out: usdc_addr,
+        buy_pool_fee: Some(500),
+        sell_pool_fee: Some(3000),
         buy_pool_stable: None,
         sell_pool_stable: None,
         buy_pool_factory: config.uniswap_v3_factory_addr,
-        sell_pool_factory: config.uniswap_v3_factory_addr, // Same factory
-        zero_for_one_a: true, // Buy USDC (t1) with WETH (t0)
-        estimated_profit_usd: 0.01, // Low placeholder, simulation will determine reality
+        sell_pool_factory: config.uniswap_v3_factory_addr,
+        zero_for_one_a: true,
+        estimated_profit_usd: 0.01,
     };
     info!("Constructed Manual Route Candidate: {:?}", route);
-
-    // 3. Simulate & Optimize
     let app_state = Arc::new(AppState::new(config.clone()));
     let gas_info = fetch_gas_price(client.clone(), &config).await?;
     let gas_price_gwei = ToF64Lossy::to_f64_lossy(&gas_info.max_priority_fee_per_gas) / 1e9;
     info!("Fetched Anvil gas price (prio): {} gwei", gas_price_gwei);
-    let buy_snapshot = None; // Not using snapshots for this manual test run
+    let buy_snapshot = None;
     let sell_snapshot = None;
-
     let optimal_loan_result = find_optimal_loan_amount(
         client.clone(),
         app_state.clone(),
@@ -377,7 +357,6 @@ async fn test_full_univ3_arbitrage_cycle() -> Result<()> {
         sell_snapshot,
         gas_price_gwei,
     ).await?;
-
     let (loan_amount_wei, simulated_net_profit_wei) = match optimal_loan_result {
         Some((amount, profit)) if profit > I256::zero() => {
             info!("✅ Optimal loan found: amount={}, profit={}", amount, profit);
@@ -392,13 +371,10 @@ async fn test_full_univ3_arbitrage_cycle() -> Result<()> {
             return Ok(());
         }
     };
-
     if loan_amount_wei.is_zero() {
         info!("Skipping transaction submission as no profitable loan was simulated.");
         return Ok(());
     }
-
-    // 4. Execute Transaction
     let nonce_manager = Arc::new(NonceManager::new(sim_env.wallet_address));
     let mut test_config = config.clone();
     test_config.arb_executor_address = Some(executor_addr);
@@ -412,12 +388,9 @@ async fn test_full_univ3_arbitrage_cycle() -> Result<()> {
         simulated_net_profit_wei,
         nonce_manager.clone(),
     ).await;
-
-    // 5. Verification
     match submission_result {
         Ok(tx_hash) => {
             info!("✅ Transaction submitted and confirmed successfully: {}", tx_hash);
-            // Add further checks here if desired (e.g., query balance changes on Anvil)
         }
         Err(e) => {
             error!("❌ Transaction submission/confirmation failed: {:?}", e);
@@ -436,8 +409,89 @@ async fn test_full_univ3_arbitrage_cycle() -> Result<()> {
     Ok(())
 }
 
+/// Test: Websocket Event Handling and Arbitrage Check Trigger
+#[tokio::test]
+#[ignore]
+async fn test_event_handling_triggers_arbitrage_check() -> Result<()> {
+    setup_tracing();
+    info!("--- Running Test: test_event_handling_triggers_arbitrage_check ---");
 
-// --- test_huff_direct_call remains unchanged ---
+    let sim_env = setup_simulation_environment().await?;
+    let client = sim_env.http_client.clone();
+    let config = load_config()?;
+    let mut test_config = config.clone();
+    test_config.arb_executor_address = sim_env.executor_address;
+
+    let app_state = Arc::new(AppState::new(test_config));
+    let nonce_manager = Arc::new(NonceManager::new(sim_env.wallet_address));
+
+    let target_pool_addr: Address = "0x851492574065EDE975391E141377067943aA08eF".parse()?;
+    let uni_factory_addr = config.uniswap_v3_factory_addr;
+
+    info!("Fetching initial state for pool: {}", target_pool_addr);
+    state::fetch_and_cache_pool_state(
+        target_pool_addr,
+        DexType::UniswapV3,
+        uni_factory_addr,
+        client.clone(),
+        app_state.clone()
+    ).await.expect("Initial pool state fetch failed");
+
+    let initial_snapshot = app_state.pool_snapshots.get(&target_pool_addr)
+        .map(|s| s.value().clone())
+        .expect("Initial snapshot missing after fetch");
+    info!(?initial_snapshot, "Initial snapshot fetched.");
+
+    info!("Triggering a V3 swap on pool {} to generate an event...", target_pool_addr);
+    let uni_pool_binding = UniswapV3Pool::new(target_pool_addr, client.clone());
+    let swap_tx_hash = trigger_v3_swap(
+        &sim_env,
+        target_pool_addr,
+        &uni_pool_binding,
+        sim_env.wallet_address,
+        true,
+        I256::from_raw(parse_ether("0.01")?),
+        ethers::types::U256::zero(), // Corrected U256 path
+        Bytes::new(), // Corrected Bytes path
+    ).await.expect("Swap trigger failed");
+    info!("Swap triggered, tx hash: {}. Waiting for receipt...", swap_tx_hash);
+
+    let receipt = client.get_transaction_receipt(swap_tx_hash).await?
+        .ok_or_else(|| eyre!("Failed to get receipt for swap tx {}", swap_tx_hash))?;
+    info!("Swap transaction mined in block: {:?}", receipt.block_number);
+
+    let swap_event_signature = ulp1_5::UNI_V3_SWAP_TOPIC.clone();
+    let swap_log = receipt.logs.into_iter()
+        .find(|log| log.address == target_pool_addr && !log.topics.is_empty() && log.topics[0] == swap_event_signature)
+        .ok_or_else(|| eyre!("Swap log not found in transaction receipt for pool {}", target_pool_addr))?;
+
+    info!("Swap log found: {:?}", swap_log);
+    let log_to_process = swap_log.clone();
+
+    info!("Passing swap log to handle_log_event...");
+    handle_log_event(log_to_process, app_state.clone(), client.clone(), nonce_manager.clone()).await?;
+    info!("handle_log_event processed.");
+
+    let updated_snapshot = app_state.pool_snapshots.get(&target_pool_addr)
+        .map(|s| s.value().clone())
+        .expect("Updated snapshot missing after event handling");
+
+    info!(?updated_snapshot, "Snapshot after event handling.");
+
+    assert_ne!(initial_snapshot.sqrt_price_x96, updated_snapshot.sqrt_price_x96, "SqrtPriceX96 should have changed");
+    assert_ne!(initial_snapshot.tick, updated_snapshot.tick, "Tick should have changed");
+    assert!(updated_snapshot.last_update_block.is_some(), "Last update block should be set");
+    assert_eq!(updated_snapshot.last_update_block, receipt.block_number, "Last update block should match swap block");
+
+    info!("✅ PoolSnapshot successfully updated by handle_log_event.");
+    warn!("Further verification of check_for_arbitrage actual execution and route finding requires more advanced test setup or specific log scraping.");
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+
+    info!("--- Test Finished: test_event_handling_triggers_arbitrage_check ---");
+    Ok(())
+}
+
 /// Placeholder: Test direct interaction with Huff contract functions (e.g., withdraw)
 #[tokio::test]
 #[ignore]
