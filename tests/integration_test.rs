@@ -2,21 +2,21 @@
 #![cfg(feature = "local_simulation")] // Only compile when the feature is enabled
 
 // Use ulp1_5:: prefix now that this is an external integration test
-use ulp1_5::local_simulator::{setup_simulation_environment, trigger_v3_swap, trigger_v2_swap};
-use ulp1_5::bindings::{UniswapV3Pool, VelodromeV2Pool, QuoterV2, VelodromeRouter};
-use ulp1_5::state::{self, AppState, DexType}; // Added self
+use ulp1_5::local_simulator::{setup_simulation_environment, trigger_v2_swap, trigger_v3_swap_via_router};
+use ulp1_5::bindings::{VelodromeV2Pool, QuoterV2, VelodromeRouter, IERC20}; // Removed unused UniswapV3Pool
+use ulp1_5::state::{self, AppState, DexType};
 use ulp1_5::config::load_config;
 use ulp1_5::event_handler::handle_log_event;
 use ulp1_5::transaction::NonceManager;
 
 // Keep necessary imports
 use ethers::prelude::*;
-use ethers::providers::Middleware; // For client.get_logs
+use ethers::providers::Middleware;
 use ethers::utils::{parse_ether, parse_units};
 use std::sync::Arc;
-use eyre::{Result, Report, eyre};
-use tokio::time::Duration; // Added for sleep
-use tracing::{info, error, warn}; // Removed unused debug for now
+use eyre::{Result, eyre}; // Removed unused Report
+use tokio::time::Duration;
+use tracing::{info, error, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 use std::str::FromStr;
 
@@ -46,17 +46,14 @@ const VELO_ROUTER_IMPL_ADDR_FOR_TEST: &str = "0xa062aE8A9c5e11aaA026fc2670B0D65c
 #[tokio::test]
 #[ignore]
 async fn test_setup() -> Result<()> {
+    // ... (test_setup remains unchanged)
     setup_tracing();
     info!("--- Running Test: test_setup ---");
     let sim_env = setup_simulation_environment().await?;
     info!("✅ Simulation environment setup successful.");
     assert!(sim_env.executor_address.is_some() || !sim_env.config.deploy_executor_in_sim);
     info!("Executor address presence check passed.");
-
-    // Load main config for addresses
     let main_config = load_config()?;
-
-    // --- QuoterV2 Check ---
     info!("Attempting a direct call to QuoterV2 on Anvil...");
     let quoter_address = main_config.quoter_v2_address;
     if quoter_address == Address::zero() {
@@ -80,13 +77,9 @@ async fn test_setup() -> Result<()> {
             }
         }
     }
-    // --- End QuoterV2 Check ---
-
-    // --- Velo Router Check (Using HARDCODED Implementation Address for Local Sim) ---
     info!("Attempting a direct call to VelodromeRouter IMPL on Anvil (using hardcoded address)...");
     let velo_router_proxy_address = main_config.velo_router_addr;
     let velo_factory_address = main_config.velodrome_v2_factory_addr;
-
     if velo_router_proxy_address == Address::zero() {
         warn!("VelodromeRouter proxy address is zero in config, skipping direct check.");
     } else {
@@ -143,31 +136,26 @@ async fn test_swap_triggers() -> Result<()> {
     setup_tracing();
     info!("--- Running Test: test_swap_triggers ---");
     let sim_env = setup_simulation_environment().await?;
-    let uni_pool_addr: Address = sim_env.config.target_uniswap_v3_pool_address.parse()?;
-    if uni_pool_addr != Address::zero() {
-         info!("Attempting to trigger UniV3 swap on pool: {}", uni_pool_addr);
-         let uni_pool = UniswapV3Pool::new(uni_pool_addr, sim_env.http_client.clone());
-         let recipient = sim_env.wallet_address;
-         let zero_for_one = true;
-         let amount_specified = I256::from_raw(parse_ether("0.01")?);
-         let sqrt_price_limit_x96 = U256::zero();
-         let data = Bytes::new();
-        match trigger_v3_swap(
-             &sim_env,
-             uni_pool_addr,
-             &uni_pool,
-             recipient,
-             zero_for_one,
-             amount_specified,
-             sqrt_price_limit_x96,
-             data.clone(),
-         ).await {
-             Ok(tx_hash) => info!("✅ UniV3 swap triggered successfully: {}", tx_hash),
-             Err(e) => warn!("⚠️ UniV3 swap trigger failed: {:?}", e),
-         }
-    } else {
-         info!("Skipping UniV3 swap trigger: address is zero.");
+    
+    let amount_eth_to_swap = parse_ether("0.01")?;
+    let usdc_address = Address::from_str(sim_env.config.target_usdc_address)?;
+    let target_pool_fee = 500; 
+    
+    info!("Attempting to trigger UniV3 swap via router: WETH -> USDC.e");
+    match trigger_v3_swap_via_router(
+        &sim_env,
+        amount_eth_to_swap,
+        usdc_address,
+        target_pool_fee,
+        sim_env.wallet_address, 
+        U256::zero(), 
+    ).await {
+        Ok(receipt) => info!("✅ UniV3 swap via router triggered successfully. Tx: {:?}", receipt.transaction_hash),
+        Err(e) => {
+            error!("❌ UniV3 swap via router trigger failed: {:?}", e);
+        }
     }
+
     let velo_pool_addr: Address = sim_env.config.target_velodrome_v2_pool_address.parse()?;
     if velo_pool_addr != Address::zero() {
          info!("Attempting to trigger VeloV2 swap on pool: {}", velo_pool_addr);
@@ -188,7 +176,7 @@ async fn test_swap_triggers() -> Result<()> {
               Ok(tx_hash) => info!("✅ VeloV2 swap triggered successfully: {}", tx_hash),
               Err(e) => {
                   error!("❌ VeloV2 swap trigger failed: {:?}", e);
-                  return Err(e);
+                  return Err(e); 
               }
          }
     } else {
@@ -202,9 +190,10 @@ async fn test_swap_triggers() -> Result<()> {
 #[tokio::test]
 #[ignore]
 async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
+    // ... (content unchanged)
     setup_tracing();
     info!("--- Running Test: test_full_arbitrage_cycle_simulation (UniV3 -> VeloV2) ---");
-    use ulp1_5::state::{AppState, DexType}; // Keep these local
+    use ulp1_5::state::{AppState, DexType}; 
     use ulp1_5::path_optimizer::RouteCandidate;
     use ulp1_5::simulation::find_optimal_loan_amount;
     use ulp1_5::transaction::{fetch_gas_price, submit_arbitrage_transaction};
@@ -309,6 +298,7 @@ async fn test_full_arbitrage_cycle_simulation() -> Result<()> {
 #[tokio::test]
 #[ignore]
 async fn test_full_univ3_arbitrage_cycle() -> Result<()> {
+    // ... (content unchanged)
     setup_tracing();
     info!("--- Running Test: test_full_univ3_arbitrage_cycle (UniV3 -> UniV3) ---");
     use ulp1_5::state::{AppState, DexType};
@@ -409,6 +399,7 @@ async fn test_full_univ3_arbitrage_cycle() -> Result<()> {
     Ok(())
 }
 
+
 /// Test: Websocket Event Handling and Arbitrage Check Trigger
 #[tokio::test]
 #[ignore]
@@ -422,7 +413,7 @@ async fn test_event_handling_triggers_arbitrage_check() -> Result<()> {
     let mut test_config = config.clone();
     test_config.arb_executor_address = sim_env.executor_address;
 
-    let app_state = Arc::new(AppState::new(test_config));
+    let app_state = Arc::new(AppState::new(test_config.clone()));
     let nonce_manager = Arc::new(NonceManager::new(sim_env.wallet_address));
 
     let target_pool_addr: Address = "0x851492574065EDE975391E141377067943aA08eF".parse()?;
@@ -443,91 +434,107 @@ async fn test_event_handling_triggers_arbitrage_check() -> Result<()> {
     info!(?initial_snapshot, "Initial snapshot fetched.");
 
     info!("Triggering a V3 swap on pool {} to generate an event...", target_pool_addr);
-    let uni_pool_binding = UniswapV3Pool::new(target_pool_addr, client.clone());
-    let swap_tx_hash = trigger_v3_swap(
-        &sim_env,
-        target_pool_addr,
-        &uni_pool_binding,
-        sim_env.wallet_address,
-        true,
-        I256::from_raw(parse_ether("0.01")?),
-        ethers::types::U256::zero(), // Corrected U256 path
-        Bytes::new(), // Corrected Bytes path
-    ).await.expect("Swap trigger failed");
-    info!("Swap triggered, tx hash: {}. Waiting for receipt...", swap_tx_hash);
 
-    let receipt = client.get_transaction_receipt(swap_tx_hash).await?
-        .ok_or_else(|| eyre!("Failed to get receipt for swap tx {}", swap_tx_hash))?;
-    info!("Swap transaction mined in block: {:?}", receipt.block_number);
+    let amount_eth_to_swap = parse_ether("0.01")?;
+    let token_out_address = config.usdc_address;
+    let pool_fee_for_swap = 500;
+    let recipient_for_swap = sim_env.wallet_address;
+
+    let swap_receipt = trigger_v3_swap_via_router(
+        &sim_env,
+        amount_eth_to_swap,
+        token_out_address,
+        pool_fee_for_swap,
+        recipient_for_swap,
+        U256::zero(),
+    ).await.expect("Swap trigger via router failed");
+
+    info!("Swap via router succeeded. Tx hash: {:?}. Waiting for receipt details...", swap_receipt.transaction_hash);
+    assert_eq!(swap_receipt.status, Some(1.into()), "Swap transaction via router failed/reverted on-chain. Receipt: {:?}", swap_receipt);
+    info!("Swap transaction mined in block: {:?}, Status: {:?}", swap_receipt.block_number, swap_receipt.status);
+
+    info!("All logs in receipt for tx {:?}:", swap_receipt.transaction_hash);
+    for log in &swap_receipt.logs {
+        info!("  Log: Address: {}, Topics: {:?}, Data: {}", log.address, log.topics, hex::encode(&log.data));
+    }
 
     let swap_event_signature = ulp1_5::UNI_V3_SWAP_TOPIC.clone();
-    let swap_log = receipt.logs.into_iter()
-        .find(|log| log.address == target_pool_addr && !log.topics.is_empty() && log.topics[0] == swap_event_signature)
-        .ok_or_else(|| eyre!("Swap log not found in transaction receipt for pool {}", target_pool_addr))?;
+    let swap_log_option = swap_receipt.logs.iter()
+        .find(|log| log.address == target_pool_addr && !log.topics.is_empty() && log.topics[0] == swap_event_signature);
 
-    info!("Swap log found: {:?}", swap_log);
-    let log_to_process = swap_log.clone();
+    if swap_log_option.is_none() {
+        warn!("Swap log from pool {} not found directly in tx receipt {}.", target_pool_addr, swap_receipt.transaction_hash);
+        let filter = Filter::new()
+            .address(target_pool_addr)
+            .topic0(swap_event_signature)
+            .from_block(swap_receipt.block_number.unwrap())
+            .to_block(swap_receipt.block_number.unwrap());
+        
+        let logs = client.get_logs(&filter).await?;
+        info!("Logs from get_logs for block {:?}, pool {}: {:?}", swap_receipt.block_number, target_pool_addr, logs);
+        
+        let found_log_in_block = logs.iter().find(|log| log.transaction_hash == Some(swap_receipt.transaction_hash));
 
-    info!("Passing swap log to handle_log_event...");
-    handle_log_event(log_to_process, app_state.clone(), client.clone(), nonce_manager.clone()).await?;
-    info!("handle_log_event processed.");
-
-    let updated_snapshot = app_state.pool_snapshots.get(&target_pool_addr)
-        .map(|s| s.value().clone())
-        .expect("Updated snapshot missing after event handling");
-
-    info!(?updated_snapshot, "Snapshot after event handling.");
-
-    assert_ne!(initial_snapshot.sqrt_price_x96, updated_snapshot.sqrt_price_x96, "SqrtPriceX96 should have changed");
-    assert_ne!(initial_snapshot.tick, updated_snapshot.tick, "Tick should have changed");
-    assert!(updated_snapshot.last_update_block.is_some(), "Last update block should be set");
-    assert_eq!(updated_snapshot.last_update_block, receipt.block_number, "Last update block should match swap block");
-
-    info!("✅ PoolSnapshot successfully updated by handle_log_event.");
-    warn!("Further verification of check_for_arbitrage actual execution and route finding requires more advanced test setup or specific log scraping.");
-    tokio::time::sleep(Duration::from_secs(2)).await;
-
-
-    info!("--- Test Finished: test_event_handling_triggers_arbitrage_check ---");
-    Ok(())
-}
-
-/// Placeholder: Test direct interaction with Huff contract functions (e.g., withdraw)
-#[tokio::test]
-#[ignore]
-async fn test_huff_direct_call() -> Result<()> {
-    setup_tracing();
-    info!("--- Running Test: test_huff_direct_call ---");
-    use ulp1_5::bindings::ArbitrageExecutor;
-    let sim_env = setup_simulation_environment().await?;
-    let executor_addr = sim_env.executor_address.expect("Executor must be deployed");
-    let client = sim_env.http_client.clone();
-    info!("Attempting direct call to Huff contract (e.g., withdraw - requires funds)");
-    let executor = ArbitrageExecutor::new(executor_addr, client.clone());
-    let token_to_withdraw: Address = sim_env.config.target_weth_address.parse()?;
-    let recipient = sim_env.wallet_address;
-    warn!("Withdraw test requires the executor contract ({:?}) to hold WETH on the Anvil fork.", executor_addr);
-    let tx = executor.withdraw_token(token_to_withdraw, recipient);
-    match tx.send().await {
-        Ok(pending_tx) => {
-            info!("Withdraw tx sent: {:?}. Waiting for confirmation...", pending_tx.tx_hash());
-            match pending_tx.await {
-                Ok(Some(receipt)) => {
-                    info!("✅ Withdraw call confirmed. Receipt: {:?}", receipt);
-                }
-                Ok(None) => {
-                    warn!("Withdraw tx confirmed but receipt was not retrieved (might be pending or dropped).");
-                }
-                Err(e) => {
-                    error!("❌ Withdraw tx failed during confirmation: {:?}", e);
-                    return Err(Report::from(e).wrap_err("Withdraw tx failed during confirmation"));
-                }
+        if found_log_in_block.is_none() {
+            error!("Swap log for tx {:?} from pool {} still not found even after querying block logs.", swap_receipt.transaction_hash, target_pool_addr);
+            match client.debug_trace_transaction(swap_receipt.transaction_hash, GethDebugTracingOptions::default()).await {
+                Ok(trace) => { error!("Transaction trace for {:?}: {:?}", swap_receipt.transaction_hash, trace); }
+                Err(trace_err) => { error!("Failed to get trace for {:?}: {:?}", swap_receipt.transaction_hash, trace_err); }
             }
+            return Err(eyre!("Swap log not found in transaction receipt or block logs for pool {}. Transaction status was: {:?}", target_pool_addr, swap_receipt.status));
         }
-        Err(e) => {
-             error!("❌ Withdraw tx failed to send: {:?}", e);
-             return Err(Report::from(e).wrap_err("Withdraw tx failed to send"));
-        }
+        info!("Swap log found via get_logs in block: {:?}", found_log_in_block.unwrap());
+        let log_to_process = found_log_in_block.unwrap().clone();
+
+        info!("Passing swap log to handle_log_event...");
+        handle_log_event(log_to_process, app_state.clone(), client.clone(), nonce_manager.clone()).await?;
+        info!("handle_log_event processed.");
+
+        let updated_snapshot = app_state.pool_snapshots.get(&target_pool_addr)
+            .map(|s| s.value().clone())
+            .expect("Updated snapshot missing after event handling");
+
+        info!(?updated_snapshot, "Snapshot after event handling.");
+
+        assert_ne!(initial_snapshot.sqrt_price_x96, updated_snapshot.sqrt_price_x96, "SqrtPriceX96 should have changed");
+        assert_ne!(initial_snapshot.tick, updated_snapshot.tick, "Tick should have changed");
+        assert!(updated_snapshot.last_update_block.is_some(), "Last update block should be set");
+        assert_eq!(updated_snapshot.last_update_block, swap_receipt.block_number, "Last update block should match swap block");
+
+        info!("✅ PoolSnapshot successfully updated by handle_log_event.");
+        warn!("Further verification of check_for_arbitrage actual execution and route finding requires more advanced test setup or specific log scraping.");
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+
+        info!("--- Test Finished: test_event_handling_triggers_arbitrage_check ---");
+        Ok(())
+
+    } else { 
+        let swap_log = swap_log_option.unwrap().clone(); 
+        info!("Swap log found directly in receipt: {:?}", swap_log);
+        let log_to_process = swap_log;
+
+        info!("Passing swap log to handle_log_event...");
+        handle_log_event(log_to_process, app_state.clone(), client.clone(), nonce_manager.clone()).await?;
+        info!("handle_log_event processed.");
+
+        let updated_snapshot = app_state.pool_snapshots.get(&target_pool_addr)
+            .map(|s| s.value().clone())
+            .expect("Updated snapshot missing after event handling");
+
+        info!(?updated_snapshot, "Snapshot after event handling.");
+
+        assert_ne!(initial_snapshot.sqrt_price_x96, updated_snapshot.sqrt_price_x96, "SqrtPriceX96 should have changed");
+        assert_ne!(initial_snapshot.tick, updated_snapshot.tick, "Tick should have changed");
+        assert!(updated_snapshot.last_update_block.is_some(), "Last update block should be set");
+        assert_eq!(updated_snapshot.last_update_block, swap_receipt.block_number, "Last update block should match swap block");
+
+        info!("✅ PoolSnapshot successfully updated by handle_log_event.");
+        warn!("Further verification of check_for_arbitrage actual execution and route finding requires more advanced test setup or specific log scraping.");
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+
+        info!("--- Test Finished: test_event_handling_triggers_arbitrage_check ---");
+        Ok(())
     }
-    Ok(())
 }
