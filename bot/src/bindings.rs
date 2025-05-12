@@ -112,8 +112,16 @@ abigen!(
         function transfer(address to, uint256 value) external returns (bool)
         function balanceOf(address account) external view returns (uint256)
         function allowance(address owner, address spender) external view returns (uint256)
-    ]"#, // Added allowance
+    ]"#,
     event_derives(serde::Deserialize, serde::Serialize)
 );
+
+// Added MinimalSwapEmitter binding
+abigen!(
+    MinimalSwapEmitter,
+    "./abis/MinimalSwapEmitter.json",
+    event_derives(serde::Deserialize, serde::Serialize)
+);
+
 
 // END OF FILE: bot/src/bindings.rs
