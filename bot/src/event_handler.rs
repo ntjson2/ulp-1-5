@@ -242,7 +242,7 @@ pub async fn check_for_arbitrage(
             if let Some(flag_arc) = &state.test_arb_check_triggered {
                 let mut flag_guard = flag_arc.lock().await;
                 *flag_guard = true;
-                debug!("TEST HOOK: Set test_arb_check_triggered flag to true.");
+                debug!("TEST HOOK: Set test_arb_check_triggered flag to true because routes were found.");
             } else {
                  warn!("TEST HOOK: Found routes but test_arb_check_triggered flag was None in AppState.");
             }

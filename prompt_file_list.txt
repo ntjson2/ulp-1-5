@@ -1,6 +1,7 @@
 /bot/src/
 /abis/
 /contracts/
+/build/
 .env
 Cargo.toml
 README.md
