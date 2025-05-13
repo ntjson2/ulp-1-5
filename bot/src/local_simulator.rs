@@ -66,10 +66,14 @@ pub struct SimEnv {
     pub executor_address: Option<Address>,
 }
 
+// Make this constant public
+pub const VELO_ROUTER_IMPL_ADDR_FOR_SIM: &str = "0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858";
+#[cfg(feature = "local_simulation")] 
+pub const PAIR_DOES_NOT_EXIST_SELECTOR_STR: &str = "9a73ab46";
+
 
 #[instrument(skip_all, name = "sim_setup")]
 pub async fn setup_simulation_environment() -> Result<SimEnv> {
-    // ... (setup logic remains largely the same) ...
     info!("Setting up simulation environment...");
     let http_provider = Provider::<Http>::try_from(SIMULATION_CONFIG.anvil_http_url)
         .wrap_err("Failed to create HTTP provider")?;
@@ -95,7 +99,7 @@ pub async fn setup_simulation_environment() -> Result<SimEnv> {
         let bytecode_hex = fs::read_to_string(SIMULATION_CONFIG.executor_bytecode_path)
             .wrap_err("Failed to read executor bytecode")?;
         let cleaned = bytecode_hex.trim().trim_start_matches("0x");
-        let bytecode = hex::decode(cleaned) // Uses the `hex` crate
+        let bytecode = hex::decode(cleaned) 
             .wrap_err("Failed to decode executor bytecode")?;
         let bytes = Bytes::from(bytecode);
         let factory = ContractFactory::new(Abi::default(), bytes, http_client.clone());
@@ -148,7 +152,6 @@ pub async fn trigger_v2_swap(
     to_address: Address,
     data: Bytes,
 ) -> Result<TxHash> {
-    // ... (V2 swap logic remains the same) ...
     info!(%amount0_out, %amount1_out, "Triggering V2 swap via Anvil...");
     warn!("V2 swap trigger assumes prerequisites (like token approvals if needed) are met in Anvil state.");
     let swap_call = pool_binding.swap(amount0_out, amount1_out, to_address, data);
@@ -167,7 +170,7 @@ pub async fn trigger_v2_swap(
 #[instrument(skip(sim_env), fields(amount_eth_in = %format_units(amount_eth_in, "ether").unwrap_or_default()))]
 pub async fn trigger_v3_swap_via_router(
     sim_env: &SimEnv,
-    amount_eth_in: U256, // Amount of ETH to wrap and swap
+    amount_eth_in: U256, 
     token_out_addr: Address,
     pool_fee: u32,
     recipient: Address,
@@ -210,7 +213,6 @@ pub async fn trigger_v3_swap_via_router(
     }
     info!("✅ WETH approved for SwapRouter. Tx: {:?}", approve_receipt.transaction_hash);
 
-    // Use the weth_contract (IWETH9 instance) to call allowance
     let allowance_after_approve = weth_contract.allowance(sim_env.wallet_address, router_addr).call().await?;
     info!("Router WETH allowance after approval: {}", format_units(allowance_after_approve, "ether")?);
     if allowance_after_approve < amount_weth_in {
@@ -239,9 +241,8 @@ pub async fn trigger_v3_swap_via_router(
         }
         Err(e) => {
             warn!("⚠️ SwapRouter.exactInputSingle CALL failed (simulated): {:?}", e);
-             // Fix E0599: Pattern match directly on ContractError::Revert
-             if let ContractError::Revert(data) = e { // Removed .as_error()
-                 warn!("   Raw revert data: 0x{}", ethers_hex::encode(data)); // Use ethers_hex
+             if let ContractError::Revert(data) = e { 
+                 warn!("   Raw revert data: 0x{}", ethers_hex::encode(data)); 
              }
         }
     }
@@ -262,7 +263,6 @@ pub async fn trigger_v3_swap_via_router(
 
 #[instrument(skip(sim_env))]
 pub async fn fetch_simulation_data(sim_env: &SimEnv) -> Result<()> {
-    // ... (fetch_simulation_data remains the same) ...
     info!("Fetching simulation data from Anvil...");
     apply_read_latency().await;
     let weth_addr: Address = sim_env.config.target_weth_address.parse()?;
@@ -283,7 +283,6 @@ pub async fn fetch_simulation_data(sim_env: &SimEnv) -> Result<()> {
 
 #[instrument(skip(sim_env))]
 pub async fn run_simulation_scenario(sim_env: Arc<SimEnv>) -> Result<()> {
-    // ... (run_simulation_scenario remains the same) ...
     info!("Starting Anvil simulation scenario...");
     fetch_simulation_data(&sim_env).await?;
 

@@ -10,11 +10,13 @@ use ethers::{
 };
 use eyre::{eyre, Result, WrapErr};
 use std::{str::FromStr, sync::Arc};
+#[cfg(feature = "local_simulation")] // Conditionally import Mutex
+use tokio::sync::Mutex;
 use tokio::time::{timeout, Duration, sleep};
 use tracing::{error, info, instrument, trace, warn, debug};
 
 // --- Enums / Structs ---
-// (DexType, PoolState, PoolSnapshot, AppState structs remain unchanged)
+// (DexType, PoolState, PoolSnapshot remain unchanged)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DexType {
     UniswapV3,
@@ -78,6 +80,9 @@ pub struct AppState {
     pub usdc_address: Address,
     pub weth_decimals: u8,
     pub usdc_decimals: u8,
+    // Added flag for testing `check_for_arbitrage` trigger
+    #[cfg(feature = "local_simulation")]
+    pub test_arb_check_triggered: Option<Arc<Mutex<bool>>>,
 }
 
 impl AppState {
@@ -90,6 +95,8 @@ impl AppState {
             config,
             pool_states: Default::default(),
             pool_snapshots: Default::default(),
+            #[cfg(feature = "local_simulation")]
+            test_arb_check_triggered: None, // Initialize as None
         }
     }
     pub fn target_pair(&self) -> Option<(Address, Address)> {
@@ -103,6 +110,12 @@ impl AppState {
                 Some((self.usdc_address, self.weth_address))
             }
         }
+    }
+
+    // Helper function to set the test flag (only in test context)
+    #[cfg(feature = "local_simulation")]
+    pub fn set_test_arb_check_flag(&mut self, flag: Arc<Mutex<bool>>) {
+        self.test_arb_check_triggered = Some(flag);
     }
 }
 
@@ -180,13 +193,32 @@ pub async fn fetch_and_cache_pool_state(
                     }
                     #[cfg(not(feature = "local_simulation"))]
                     {
-                        (sqrtp_val, tick_val, ..) = pool.slot_0().call().await?;
+                         // Original code would fetch individually or fail here. We need sqrtP and tick.
+                        // Re-fetch slot0 if initial combined attempt failed
+                         (sqrtp_val, tick_val, ..) = pool.slot_0().call().await?;
+                         // TODO: Consider adding retries or better error handling if individual calls are needed
+                         // For now, assume slot0 call succeeds if the combined check logic above failed
                     }
                 }
 
-                if !success {
-                    eyre::bail!("Failed to fetch all required UniV3 pool data for {} after individual attempts.", pool_addr);
+                // If still not successful after potential fallback (or if not in local_sim)
+                if !success && t0_res.is_zero() {
+                    // Need token0, token1, fee at minimum. Try fetching them individually if not already done.
+                    if t0_res.is_zero() { t0_res = pool.token_0().call().await?; sleep(call_delay).await; }
+                    if t1_res.is_zero() { t1_res = pool.token_1().call().await?; sleep(call_delay).await; }
+                    if fee_res_val == 0 { fee_res_val = pool.fee().call().await?; }
+                     // If still zero, something is wrong
+                    if t0_res.is_zero() || t1_res.is_zero() {
+                         eyre::bail!("Failed to fetch all required UniV3 pool data for {} after individual attempts.", pool_addr);
+                    }
+                     // Ensure we have sqrtP and tick even if other parts were fetched individually
+                    if sqrtp_val.is_zero() {
+                         let (s_val, t_val, ..) = pool.slot_0().call().await?;
+                         sqrtp_val = s_val;
+                         tick_val = t_val;
+                    }
                 }
+
 
                 let is_t0_weth = t0_res == weth_addr;
                 let ps = PoolState {
@@ -272,6 +304,6 @@ pub fn is_target_pair_option(
 ) -> bool {
     match target {
         Some((ta, tb)) => (a0 == ta && a1 == tb) || (a0 == tb && a1 == ta),
-        None => true,
+        None => true, // If no target pair specified, assume it matches (e.g., for generic pool creation events)
     }
 }
