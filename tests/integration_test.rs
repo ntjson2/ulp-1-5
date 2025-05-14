@@ -21,7 +21,7 @@ use ethers::{
     contract::EthEvent, 
     prelude::*,
     types::{Address, Bytes, U256, U64, I256}, 
-    utils::{format_units, hex, parse_ether, parse_units, ConversionError}, 
+    utils::{format_units, hex, parse_ether, parse_units, ConversionError, ParseUnits}, 
 };
 use eyre::{Result, WrapErr, eyre};
 use std::{fs, str::FromStr, sync::Arc, time::Duration}; 
@@ -566,8 +566,10 @@ async fn test_event_handling_triggers_arbitrage_check() -> Result<()> {
         let amount0_val = parse_ether("0.1").map_err(|e: ConversionError| eyre!(e))?;
         let amount0 = I256::from_raw(amount0_val);
 
-        let amount1_abs_val_u256: U256 = parse_units("200", "6") // Explicitly type as U256 after parsing
-            .map_err(|e: ConversionError| eyre!(e))?; 
+        // Corrected: use map_err to convert ParseUnits -> eyre::Report, then ?
+        let amount1_abs_val_u256 = parse_units("200", "6")
+            .map_err(|e: ParseUnits| eyre!(e.to_string()))?; // Convert ParseUnits error directly to eyre::Report
+        
         let amount1 = I256::from_raw(amount1_abs_val_u256) 
             .checked_mul(I256::from(-1))
             .ok_or_else(|| eyre!("I256 negation overflow"))?;
