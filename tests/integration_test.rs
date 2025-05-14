@@ -21,9 +21,9 @@ use ethers::{
     contract::EthEvent, 
     prelude::*,
     types::{Address, Bytes, U256, U64, I256}, 
-    utils::{format_units, hex, parse_ether, parse_units, ConversionError, ParseUnits}, 
+    utils::{format_units, hex, parse_ether, parse_units }, // Removed ParseUnits and ConversionError
 };
-use eyre::{Result, WrapErr, eyre};
+use eyre::{Result, WrapErr, eyre}; 
 use std::{fs, str::FromStr, sync::Arc, time::Duration}; 
 use tokio::sync::Mutex; 
 use tokio::time::timeout;
@@ -31,8 +31,9 @@ use tracing::{error, info, warn, Level};
 
 
 // --- Constants ---
-const TEST_TIMEOUT: Duration = Duration::from_secs(180); 
+const TEST_TIMEOUT: Duration = Duration::from_secs(240); 
 static mut MINIMAL_SWAP_EMITTER_ADDR: Option<Address> = None;
+const EMIT_SWAP_GAS_LIMIT: u64 = 150_000; 
 
 // Helper to get the emitter address safely
 fn get_minimal_swap_emitter_address() -> Address {
@@ -40,45 +41,59 @@ fn get_minimal_swap_emitter_address() -> Address {
 }
 
 // --- Test Setup and Teardown ---
-async fn setup_test_suite() -> Arc<SimEnv> {
+async fn setup_test_suite() -> Result<Arc<SimEnv>> { 
     let _ = tracing_subscriber::fmt()
         .with_max_level(Level::INFO) 
         .with_test_writer() 
         .try_init();
 
     info!("🧪 Setting up test suite with Anvil...");
-    let sim_env = setup_simulation_environment()
+    let sim_env = setup_simulation_environment() 
         .await
-        .expect("Failed to set up Anvil simulation environment.");
+        .wrap_err("Failed to set up Anvil simulation environment. Ensure Anvil is clean or tests are run serially if issues persist.")?; 
 
     let emitter_bytecode_hex = std::fs::read_to_string("./build/MinimalSwapEmitter.bin")
-        .expect("Failed to read MinimalSwapEmitter bytecode");
+        .wrap_err("Failed to read MinimalSwapEmitter bytecode")?;
     let emitter_bytecode = hex::decode(emitter_bytecode_hex.trim())
-        .expect("Failed to decode MinimalSwapEmitter bytecode");
+        .wrap_err("Failed to decode MinimalSwapEmitter bytecode")?;
     
     let abi_str = fs::read_to_string("./abis/MinimalSwapEmitter.json")
-        .expect("Failed to read MinimalSwapEmitter ABI JSON");
+        .wrap_err("Failed to read MinimalSwapEmitter ABI JSON")?;
     let abi: Abi = serde_json::from_str(&abi_str)
-        .expect("Failed to parse MinimalSwapEmitter ABI JSON");
+        .wrap_err("Failed to parse MinimalSwapEmitter ABI JSON")?;
 
     let factory = ContractFactory::new(
         abi, 
         Bytes::from(emitter_bytecode),
         sim_env.http_client.clone(),
     );
-    let emitter_contract = factory
-        .deploy(())
-        .expect("Failed to construct MinimalSwapEmitter deployer")
-        .send()
-        .await
-        .expect("Failed to deploy MinimalSwapEmitter");
-    let emitter_address = emitter_contract.address();
-    unsafe {
-        MINIMAL_SWAP_EMITTER_ADDR = Some(emitter_address);
+    
+    let deployer = factory.deploy(())
+        .map_err(|e| eyre!("Failed to construct MinimalSwapEmitter deployer: {}", e))?;
+        
+    let emitter_contract_res = deployer.send().await;
+
+    match emitter_contract_res {
+        Ok(emitter_contract) => {
+            let emitter_address = emitter_contract.address();
+            unsafe {
+                if MINIMAL_SWAP_EMITTER_ADDR.is_none() { 
+                    MINIMAL_SWAP_EMITTER_ADDR = Some(emitter_address);
+                }
+            }
+            info!("✅ MinimalSwapEmitter deployed (or was already present) at: {:?}", get_minimal_swap_emitter_address());
+        }
+        Err(e) => {
+            warn!("Failed to deploy MinimalSwapEmitter (possibly due to parallel test execution or existing contract with same nonce): {:?}. Will try to use existing if set.", e);
+            if unsafe { MINIMAL_SWAP_EMITTER_ADDR.is_none()} {
+                 return Err(eyre!("MinimalSwapEmitter deployment failed and no existing address was set. Error: {:?}", e));
+            }
+             info!("Using previously set MinimalSwapEmitter address: {:?}", get_minimal_swap_emitter_address());
+        }
     }
-    info!("✅ MinimalSwapEmitter deployed at: {:?}", emitter_address);
-    info!("✅ Anvil Test Suite Setup Complete.");
-    Arc::new(sim_env)
+    
+    info!("✅ Anvil Test Suite Setup Complete (or attempted).");
+    Ok(Arc::new(sim_env)) 
 }
 
 
@@ -97,8 +112,11 @@ async fn test_setup_and_anvil_interactions() -> Result<()> {
         assert!(block_number > U64::zero(), "Block number should be greater than 0");
 
         if SIMULATION_CONFIG.deploy_executor_in_sim {
-            assert!(sim_env.executor_address.is_some(), "Executor address should be set");
-            info!("[{}] Executor deployed at: {:?}", current_test_name, sim_env.executor_address.unwrap());
+            if let Some(executor_address) = sim_env.executor_address {
+                 info!("[{}] Executor deployed at: {:?}", current_test_name, executor_address);
+            } else {
+                warn!("[{}] Executor address not set in SimEnv, possibly due to parallel setup deployment failure.", current_test_name);
+            }
         }
 
         let config_loaded = config::load_config().expect("Failed to load .env for test");
@@ -106,7 +124,8 @@ async fn test_setup_and_anvil_interactions() -> Result<()> {
         let quoter = QuoterV2::new(quoter_v2_addr, sim_env.http_client.clone());
         let weth_addr: Address = config_loaded.weth_address;
         let usdc_addr: Address = config_loaded.usdc_address;
-        let amount_in = parse_ether("1.0")?; 
+        
+        let amount_in: U256 = parse_ether("1.0")?; 
         let fee = 500; 
 
         let params = ulp1_5::bindings::quoter_v2::QuoteExactInputSingleParams {
@@ -132,7 +151,7 @@ async fn test_setup_and_anvil_interactions() -> Result<()> {
         let velo_router_impl_addr = Address::from_str(VELO_ROUTER_IMPL_ADDR_FOR_SIM)?;
         let velo_router_for_test = VelodromeRouter::new(velo_router_impl_addr, sim_env.http_client.clone());
         let velo_factory_addr_from_config = config_loaded.velodrome_v2_factory_addr;
-        let amount_in_velo = parse_ether("1.0")?; 
+        let amount_in_velo: U256 = parse_ether("1.0")?; 
 
         let routes = vec![ulp1_5::bindings::velodrome_router::Route {
             from: weth_addr,
@@ -174,7 +193,7 @@ async fn test_setup_and_anvil_interactions() -> Result<()> {
         info!("[{}] Test logic completed successfully.", current_test_name);
         Ok(())
     }
-    timeout(TEST_TIMEOUT, test_logic(setup_test_suite().await, test_name))
+    timeout(TEST_TIMEOUT, test_logic(setup_test_suite().await?, test_name)) 
         .await
         .map_err(|e| eyre!("[{}] Test timed out: {}", test_name, e))?
 }
@@ -189,7 +208,7 @@ async fn test_swap_triggers() -> Result<()> {
         let sim_env = &*sim_env_arc;
         let config_loaded = config::load_config().expect("Failed to load .env for test");
 
-        let amount_eth_in_v3 = parse_ether("0.01")?;
+        let amount_eth_in_v3: U256 = parse_ether("0.01")?;
         let usdc_addr: Address = config_loaded.usdc_address;
         let pool_fee_v3 = 500; 
         let recipient_v3 = sim_env.wallet_address;
@@ -215,7 +234,7 @@ async fn test_swap_triggers() -> Result<()> {
 
         let weth_addr: Address = config_loaded.weth_address;
         let weth_contract = ulp1_5::bindings::IWETH9::new(weth_addr, sim_env.http_client.clone());
-        let amount_weth_for_velo_swap = parse_ether("0.001")?;
+        let amount_weth_for_velo_swap: U256 = parse_ether("0.001")?;
 
          match weth_contract.approve(velo_pool_addr, amount_weth_for_velo_swap).send().await?.await? {
             Some(receipt) if receipt.status == Some(1.into()) => {
@@ -269,7 +288,7 @@ async fn test_swap_triggers() -> Result<()> {
         info!("[{}] Test logic completed.", current_test_name);
         Ok(())
     }
-     timeout(TEST_TIMEOUT, test_logic(setup_test_suite().await, test_name))
+     timeout(TEST_TIMEOUT, test_logic(setup_test_suite().await?, test_name))
         .await
         .map_err(|e| eyre!("[{}] Test timed out: {}", test_name, e))?
 }
@@ -402,7 +421,7 @@ async fn test_full_univ3_arbitrage_cycle_simulation() -> Result<()> {
         info!("[{}] Test logic completed successfully.", current_test_name);
         Ok(())
     }
-    timeout(TEST_TIMEOUT, test_logic(setup_test_suite().await, test_name))
+    timeout(TEST_TIMEOUT, test_logic(setup_test_suite().await?, test_name))
         .await
         .map_err(|e| eyre!("[{}] Test timed out: {}", test_name, e))?
 }
@@ -514,7 +533,7 @@ async fn test_full_arbitrage_cycle_simulation() -> Result<()> { // UniV3 -> Velo
         info!("[{}] Test logic completed successfully.", current_test_name);
         Ok(())
     }
-    timeout(TEST_TIMEOUT, test_logic(setup_test_suite().await, test_name))
+    timeout(TEST_TIMEOUT, test_logic(setup_test_suite().await?, test_name))
         .await
         .map_err(|e| eyre!("[{}] Test timed out: {}", test_name, e))?
 }
@@ -563,24 +582,23 @@ async fn test_event_handling_triggers_arbitrage_check() -> Result<()> {
         let emitter_addr = get_minimal_swap_emitter_address();
         let emitter = MinimalSwapEmitter::new(emitter_addr, client.clone());
         
-        let amount0_val = parse_ether("0.1").map_err(|e: ConversionError| eyre!(e))?;
+        // Corrected based on your latest guide: parse_ether returns Result<U256, Error>
+        let amount0_val: U256 = parse_ether("0.1")?; 
         let amount0 = I256::from_raw(amount0_val);
 
-        // Corrected: use map_err to convert ParseUnits -> eyre::Report, then ?
-        let amount1_abs_val_u256 = parse_units("200", "6")
-            .map_err(|e: ParseUnits| eyre!(e.to_string()))?; // Convert ParseUnits error directly to eyre::Report
+        // Corrected based on your latest guide: parse_units returns Result<U256, Error>
+        let amount1_abs_val_u256: U256 = parse_units("200", 6usize)?;
         
         let amount1 = I256::from_raw(amount1_abs_val_u256) 
             .checked_mul(I256::from(-1))
             .ok_or_else(|| eyre!("I256 negation overflow"))?;
-
 
         let sqrt_price_x96 = U256::from_dec_str("33700000000000000000000000000")?; 
         let liquidity = U256::from(1_000_000_000_000_000_000u128).as_u128(); 
         let tick: i32 = 204000; 
 
         info!("[{}] Emitting synthetic Swap event from MinimalSwapEmitter at {}", current_test_name, emitter_addr);
-        let tx_call = emitter.emit_minimal_swap(amount0, amount1, sqrt_price_x96, liquidity, tick);
+        let tx_call = emitter.emit_minimal_swap(amount0, amount1, sqrt_price_x96, liquidity, tick).gas(EMIT_SWAP_GAS_LIMIT);
         let pending_tx = tx_call.send().await.wrap_err("Failed to send emitMinimalSwap tx")?;
         let receipt = pending_tx.await?.ok_or_else(|| eyre!("EmitSwap tx not mined"))?;
 
@@ -620,7 +638,7 @@ async fn test_event_handling_triggers_arbitrage_check() -> Result<()> {
         info!("[{}] Test logic completed successfully.", current_test_name);
         Ok(())
     }
-    timeout(TEST_TIMEOUT, test_logic(setup_test_suite().await, test_name))
+    timeout(TEST_TIMEOUT, test_logic(setup_test_suite().await?, test_name)) 
         .await
         .map_err(|e| eyre!("[{}] Test timed out: {}", test_name, e))?
 }

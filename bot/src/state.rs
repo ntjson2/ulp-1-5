@@ -1,22 +1,22 @@
 // bot/src/state.rs
 
 // --- Imports ---
-use crate::bindings::{AerodromePool, UniswapV3Pool, VelodromeV2Pool}; // Removed unused QuoterV2
+use crate::bindings::{AerodromePool, UniswapV3Pool, VelodromeV2Pool}; 
 use crate::config::Config;
 use dashmap::DashMap;
 use ethers::{
     prelude::*,
     types::{Address, U256, U64},
+    utils::parse_units, 
 };
-use eyre::{eyre, Result, WrapErr};
+use eyre::{eyre, Result}; 
 use std::{str::FromStr, sync::Arc};
-#[cfg(feature = "local_simulation")] // Conditionally import Mutex
+#[cfg(feature = "local_simulation")] 
 use tokio::sync::Mutex;
 use tokio::time::{timeout, Duration, sleep};
 use tracing::{error, info, instrument, trace, warn, debug};
 
-// --- Enums / Structs ---
-// (DexType, PoolState, PoolSnapshot remain unchanged)
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DexType {
     UniswapV3,
@@ -80,7 +80,6 @@ pub struct AppState {
     pub usdc_address: Address,
     pub weth_decimals: u8,
     pub usdc_decimals: u8,
-    // Added flag for testing `check_for_arbitrage` trigger
     #[cfg(feature = "local_simulation")]
     pub test_arb_check_triggered: Option<Arc<Mutex<bool>>>,
 }
@@ -96,7 +95,7 @@ impl AppState {
             pool_states: Default::default(),
             pool_snapshots: Default::default(),
             #[cfg(feature = "local_simulation")]
-            test_arb_check_triggered: None, // Initialize as None
+            test_arb_check_triggered: None, 
         }
     }
     pub fn target_pair(&self) -> Option<(Address, Address)> {
@@ -112,7 +111,6 @@ impl AppState {
         }
     }
 
-    // Helper function to set the test flag (only in test context)
     #[cfg(feature = "local_simulation")]
     pub fn set_test_arb_check_flag(&mut self, flag: Arc<Mutex<bool>>) {
         self.test_arb_check_triggered = Some(flag);
@@ -132,7 +130,7 @@ pub async fn fetch_and_cache_pool_state(
     info!("Fetching state...");
     let weth_addr = app_state.weth_address;
     let timeout_dur = Duration::from_secs(app_state.config.fetch_timeout_secs.unwrap_or(15));
-    let call_delay = Duration::from_millis(200); // Increased delay slightly
+    let call_delay = Duration::from_millis(200); 
 
     let fetch_logic = async {
         match dex_type {
@@ -142,7 +140,6 @@ pub async fn fetch_and_cache_pool_state(
                     (Address::zero(), Address::zero(), 0u32, U256::zero(), 0i32);
                 let mut success = false;
 
-                // Attempt direct calls
                 debug!("Attempting direct UniV3 pool calls for {}", pool_addr);
                 let slot0_call_result = pool.slot_0().call().await;
                 if slot0_call_result.is_ok() {
@@ -172,53 +169,27 @@ pub async fn fetch_and_cache_pool_state(
                         warn!("LOCAL SIMULATION: Direct UniV3 pool calls failed for {}. Using fallback with hardcoded/default values.", pool_addr);
                         t0_res = app_state.weth_address;
                         t1_res = app_state.usdc_address;
-                        fee_res_val = 500; // WETH/USDC 0.05%
-                        // Use a plausible sqrtPriceX96 for WETH/USDC (e.g., around 2000 USDC per WETH)
-                        // sqrt(2000 * 10^6 / 10^18) * 2^96 = sqrt(2000 * 10^-12) * 2^96
-                        // = sqrt(0.000000002) * 2^96 approx 0.00004472 * 7.92e28 = 3.54e24
-                        // This calculation is highly dependent on which token is token0.
-                        // If WETH (18 dec) is t0 and USDC (6 dec) is t1, price is t1/t0.
-                        // Price = (sqrtP/2^96)^2 * 10^(dec0-dec1)
-                        // sqrtP = sqrt(Price / 10^(dec0-dec1)) * 2^96
-                        // sqrtP = sqrt( (1/2000 USDC per WETH) / 10^(18-6) ) * 2^96
-                        // sqrtP = sqrt( (1/2000) / 10^12 ) * 2^96
-                        // sqrtP = sqrt( 0.0005 / 10^12 ) * 2^96 = sqrt(5 * 10^-16) * 2^96
-                        // sqrtP = 2.236e-8 * 7.92e28 = 1.77e21 (approx)
-                        // A known good value for WETH/USDC 0.05% OP pool 0x8514...ef is around tick 204000, sqrtP ~3.37e28
-                        // Let's use a value near that.
-                        sqrtp_val = U256::from_dec_str("33762070975509198366879000000")?; // approx tick 204k for WETH/USDC
-                        tick_val = 204000; // Approx tick for ~2000 price
+                        fee_res_val = 500; 
+                        sqrtp_val = U256::from_dec_str("33762070975509198366879000000")?; 
+                        tick_val = 204000; 
                         warn!("Using placeholder sqrtP={}, tick={} for local sim fallback for pool {}", sqrtp_val, tick_val, pool_addr);
-                        success = true;
+                        success = true; 
                     }
                     #[cfg(not(feature = "local_simulation"))]
                     {
-                         // Original code would fetch individually or fail here. We need sqrtP and tick.
-                        // Re-fetch slot0 if initial combined attempt failed
-                         (sqrtp_val, tick_val, ..) = pool.slot_0().call().await?;
-                         // TODO: Consider adding retries or better error handling if individual calls are needed
-                         // For now, assume slot0 call succeeds if the combined check logic above failed
+                         (sqrtp_val, tick_val, ..) = pool.slot_0().call().await.map_err(|e| eyre!(e).wrap_err("Failed slot0 call even in non-sim"))?;
+                         if t0_res.is_zero() { t0_res = pool.token_0().call().await.map_err(|e| eyre!(e).wrap_err("Failed token0 call"))?; sleep(call_delay).await; }
+                         if t1_res.is_zero() { t1_res = pool.token_1().call().await.map_err(|e| eyre!(e).wrap_err("Failed token1 call"))?; sleep(call_delay).await; }
+                         if fee_res_val == 0 { fee_res_val = pool.fee().call().await.map_err(|e| eyre!(e).wrap_err("Failed fee call"))?; }
+                         if t0_res.is_zero() || t1_res.is_zero() {
+                            eyre::bail!("Failed to fetch all required UniV3 pool data for {} after individual attempts.", pool_addr);
+                         }
+                         success = true; 
                     }
                 }
-
-                // If still not successful after potential fallback (or if not in local_sim)
-                if !success && t0_res.is_zero() {
-                    // Need token0, token1, fee at minimum. Try fetching them individually if not already done.
-                    if t0_res.is_zero() { t0_res = pool.token_0().call().await?; sleep(call_delay).await; }
-                    if t1_res.is_zero() { t1_res = pool.token_1().call().await?; sleep(call_delay).await; }
-                    if fee_res_val == 0 { fee_res_val = pool.fee().call().await?; }
-                     // If still zero, something is wrong
-                    if t0_res.is_zero() || t1_res.is_zero() {
-                         eyre::bail!("Failed to fetch all required UniV3 pool data for {} after individual attempts.", pool_addr);
-                    }
-                     // Ensure we have sqrtP and tick even if other parts were fetched individually
-                    if sqrtp_val.is_zero() {
-                         let (s_val, t_val, ..) = pool.slot_0().call().await?;
-                         sqrtp_val = s_val;
-                         tick_val = t_val;
-                    }
+                if !success { 
+                    eyre::bail!("Failed to obtain all necessary UniV3 data for pool {}", pool_addr);
                 }
-
 
                 let is_t0_weth = t0_res == weth_addr;
                 let ps = PoolState {
@@ -234,33 +205,75 @@ pub async fn fetch_and_cache_pool_state(
                 Ok((ps, sn))
             }
             DexType::VelodromeV2 | DexType::Aerodrome => {
-                 let (pool_contract_reserves, pool_contract_token0, pool_contract_token1, pool_contract_stable) =
-                    if dex_type == DexType::VelodromeV2 {
-                        let p = VelodromeV2Pool::new(pool_addr, client.clone());
-                        (p.get_reserves(), p.token_0(), p.token_1(), p.stable())
-                    } else {
-                        let p = AerodromePool::new(pool_addr, client.clone());
-                        (p.get_reserves(), p.token_0(), p.token_1(), p.stable())
-                    };
-                trace!("Fetching getReserves for Velo/Aero pool {}", pool_addr);
-                let reserves_res = pool_contract_reserves.call().await?;
-                sleep(call_delay).await;
-                trace!("Fetching token0 for Velo/Aero pool {}", pool_addr);
-                let token0_res = pool_contract_token0.call().await?;
-                sleep(call_delay).await;
-                trace!("Fetching token1 for Velo/Aero pool {}", pool_addr);
-                let token1_res = pool_contract_token1.call().await?;
-                sleep(call_delay).await;
-                trace!("Fetching stable for Velo/Aero pool {}", pool_addr);
-                let stable_res = pool_contract_stable.call().await?;
+                let (mut r0, mut r1, mut t0, mut t1, mut s_res) = 
+                    (U256::zero(), U256::zero(), Address::zero(), Address::zero(), false);
+                let mut success = false;
 
-                let (r0, r1, _block_timestamp_last): (U256, U256, U256) = reserves_res;
-                let (t0, t1, s) = (token0_res, token1_res, stable_res);
+                let p_reserves = if dex_type == DexType::VelodromeV2 {
+                    VelodromeV2Pool::new(pool_addr, client.clone()).get_reserves().call().await
+                } else {
+                    AerodromePool::new(pool_addr, client.clone()).get_reserves().call().await
+                };
+
+                if let Ok(reserves_data) = p_reserves {
+                    sleep(call_delay).await;
+                    let p_token0 = if dex_type == DexType::VelodromeV2 { VelodromeV2Pool::new(pool_addr, client.clone()).token_0().call().await } else { AerodromePool::new(pool_addr, client.clone()).token_0().call().await };
+                    if let Ok(token0_data) = p_token0 {
+                        sleep(call_delay).await;
+                        let p_token1 = if dex_type == DexType::VelodromeV2 { VelodromeV2Pool::new(pool_addr, client.clone()).token_1().call().await } else { AerodromePool::new(pool_addr, client.clone()).token_1().call().await };
+                        if let Ok(token1_data) = p_token1 {
+                            sleep(call_delay).await;
+                             let p_stable = if dex_type == DexType::VelodromeV2 { VelodromeV2Pool::new(pool_addr, client.clone()).stable().call().await } else { AerodromePool::new(pool_addr, client.clone()).stable().call().await };
+                             if let Ok(stable_data) = p_stable {
+                                (r0, r1, _) = reserves_data;
+                                t0 = token0_data;
+                                t1 = token1_data;
+                                s_res = stable_data;
+                                success = true;
+                                info!("Successfully fetched {:?} pool data via direct calls for {}", dex_type, pool_addr);
+                             }
+                        }
+                    }
+                }
+                
+                if !success {
+                    #[cfg(feature = "local_simulation")]
+                    {
+                        warn!("LOCAL SIMULATION: Direct {:?} pool calls failed for {}. Using fallback.", dex_type, pool_addr);
+                        t0 = app_state.weth_address; 
+                        t1 = app_state.usdc_address; 
+                        if t0 == app_state.weth_address { 
+                            r0 = parse_units("100", app_state.weth_decimals as u32)?.into(); // Cast u8 to u32
+                            r1 = parse_units("200000", app_state.usdc_decimals as u32)?.into(); // Cast u8 to u32
+                        } else { 
+                            r0 = parse_units("200000", app_state.usdc_decimals as u32)?.into(); // Cast u8 to u32
+                            r1 = parse_units("100", app_state.weth_decimals as u32)?.into(); // Cast u8 to u32
+                        }
+                        s_res = true; 
+                        warn!("Using placeholder reserves r0={}, r1={}, stable={} for local sim fallback for pool {}", r0, r1, s_res, pool_addr);
+                        success = true;
+                    }
+                    #[cfg(not(feature = "local_simulation"))]
+                    {
+                         let (rsv0, rsv1, _) = if dex_type == DexType::VelodromeV2 { VelodromeV2Pool::new(pool_addr, client.clone()).get_reserves().call().await.map_err(|e| eyre!(e))? } else { AerodromePool::new(pool_addr, client.clone()).get_reserves().call().await.map_err(|e| eyre!(e))? };
+                         r0 = rsv0; r1 = rsv1;
+                         sleep(call_delay).await;
+                         t0 = if dex_type == DexType::VelodromeV2 { VelodromeV2Pool::new(pool_addr, client.clone()).token_0().call().await.map_err(|e| eyre!(e))? } else { AerodromePool::new(pool_addr, client.clone()).token_0().call().await.map_err(|e| eyre!(e))? };
+                         sleep(call_delay).await;
+                         t1 = if dex_type == DexType::VelodromeV2 { VelodromeV2Pool::new(pool_addr, client.clone()).token_1().call().await.map_err(|e| eyre!(e))? } else { AerodromePool::new(pool_addr, client.clone()).token_1().call().await.map_err(|e| eyre!(e))? };
+                         sleep(call_delay).await;
+                         s_res = if dex_type == DexType::VelodromeV2 { VelodromeV2Pool::new(pool_addr, client.clone()).stable().call().await.map_err(|e| eyre!(e))? } else { AerodromePool::new(pool_addr, client.clone()).stable().call().await.map_err(|e| eyre!(e))? };
+                         success = true; 
+                    }
+                }
+                 if !success { 
+                    eyre::bail!("Failed to obtain all necessary {:?} data for pool {}", dex_type, pool_addr);
+                }
+
                 let is_t0_weth = t0 == weth_addr;
-
                 let ps = PoolState {
                     pool_address: pool_addr, dex_type, token0: t0, token1: t1,
-                    uni_fee: None, velo_stable: Some(s), t0_is_weth: Some(is_t0_weth),
+                    uni_fee: None, velo_stable: Some(s_res), t0_is_weth: Some(is_t0_weth),
                     factory: factory_addr,
                 };
                 let sn = PoolSnapshot {
@@ -283,20 +296,18 @@ pub async fn fetch_and_cache_pool_state(
             Ok(())
         }
         Ok(Err(e)) => {
-            error!(pool = %pool_addr, error = ?e, "Fetch state failed");
-            Err(e).wrap_err_with(|| format!("Pool state fetch logic failed for pool {}", pool_addr))
+            let err_msg = format!("Fetch state logic failed for pool {} ({:?}): {:?}", pool_addr, dex_type, e);
+            error!("{}", err_msg);
+            Err(eyre!(err_msg)) 
         }
         Err(_) => {
-            error!(pool = %pool_addr, timeout_secs = timeout_dur.as_secs(), "Fetch state timeout");
-            Err(eyre!(
-                "Timeout fetching pool state for {}",
-                pool_addr
-            ))
+            let err_msg = format!("Timeout fetching pool state for {} ({:?}) after {}s", pool_addr, dex_type, timeout_dur.as_secs());
+            error!("{}", err_msg);
+            Err(eyre!(err_msg))
         }
     }
 }
 
-/// Helper function to check if two token addresses match a target pair, ignoring order.
 pub fn is_target_pair_option(
     a0: Address,
     a1: Address,
@@ -304,6 +315,6 @@ pub fn is_target_pair_option(
 ) -> bool {
     match target {
         Some((ta, tb)) => (a0 == ta && a1 == tb) || (a0 == tb && a1 == ta),
-        None => true, // If no target pair specified, assume it matches (e.g., for generic pool creation events)
+        None => true, 
     }
 }

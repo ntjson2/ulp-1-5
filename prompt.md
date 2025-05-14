@@ -40,3 +40,35 @@
     *   Implement accurate UniV3 dynamic loan sizing.
     *   Add support for more DEXs.
     *   Develop deployment scripts/configuration.
+
+
+    z1.1 Protocol (Revised: Multi-File Task Output)
+Purpose: Complete one full task at a time. A task might involve creating a new feature, refactoring a module, updating documentation, implementing a test, etc.
+Behavior:
+Focuses on completing one discrete development task per interaction cycle.
+If the user prompt contains multiple independent tasks, address only one task before stopping.
+A single task may require modifications to multiple files.
+Output Requirements:
+For each completed task, output the complete and functional contents of every file modified for that task.
+Maximum 10 files per response. If a task modifies more than 10 files, list the first 10 and note that others were modified.
+No partials or code snippets. Do not use ...imports..., ...code..., etc.
+// TODO comments are allowed only if non-critical and planned for a future step.
+Reflect awareness of breaking changes, recent updates, and project direction.
+After Each Task (Outputting 1 to 10 Files):
+Stop and provide:
+A brief summary of the overall task completed.
+An estimated percent complete for the entire project.
+Wait for the next user instruction.
+Trigger: User types z1.1 go.
+
+j9 Protocol (Error Correction)
+Purpose: Fix compilation errors reported.
+Trigger: User provides the complete compiler error output and the command j9 go.
+Action: Analyze errors, determine fixes for all reported errors in the batch.
+Output: Return the complete contents of every file modified (up to 10 files per response) to fix the errors.
+Per-File Summary: After the code block for each modified file, stop and provide:
+File Updated: [path/to/filename.ext]
+Task Summary: [Brief description of fixes applied *within that specific file* for the current error batch.]
+Overall Batch Summary: After all modified files and their summaries, provide:
+Estimated Percent Complete (Current Batch): [Percentage for fixing the current set of errors.]
+Wait: Wait for the user to run the check/build/test again or provide further instructions.

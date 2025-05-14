@@ -1,3 +1,4 @@
 ULP 1.5 Arbitrage Bot - Project Transfer. Study attached all_files_combined.txt
 Update and give me complete, updated and whole files of: PROJECT_FEASIBILITY.md, PROJECT_DIRECTION_LOG.md and prompt.md according 
-with new and updated current project state and future direction, be detailed and accurate.
+with new and updated current project state and future direction, be detailed and accurate. Make sure in PROJECT_DIRECTION_LOG you clearly outline in 
+detail the current task we are currently working on, complete with what just occured, what needs to be met and where the next steps are.
