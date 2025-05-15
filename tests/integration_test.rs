@@ -21,7 +21,8 @@ use ethers::{
     contract::EthEvent, 
     prelude::*,
     types::{Address, Bytes, U256, U64, I256}, 
-    utils::{format_units, hex, parse_ether, parse_units }, // Removed ParseUnits and ConversionError
+    // Re-added ConversionError and ParseUnits
+    utils::{format_units, hex, parse_ether, parse_units, ConversionError, ParseUnits}, 
 };
 use eyre::{Result, WrapErr, eyre}; 
 use std::{fs, str::FromStr, sync::Arc, time::Duration}; 
@@ -33,7 +34,7 @@ use tracing::{error, info, warn, Level};
 // --- Constants ---
 const TEST_TIMEOUT: Duration = Duration::from_secs(240); 
 static mut MINIMAL_SWAP_EMITTER_ADDR: Option<Address> = None;
-const EMIT_SWAP_GAS_LIMIT: u64 = 150_000; 
+const EMIT_SWAP_GAS_LIMIT: u64 = 500_000; 
 
 // Helper to get the emitter address safely
 fn get_minimal_swap_emitter_address() -> Address {
@@ -125,7 +126,9 @@ async fn test_setup_and_anvil_interactions() -> Result<()> {
         let weth_addr: Address = config_loaded.weth_address;
         let usdc_addr: Address = config_loaded.usdc_address;
         
-        let amount_in: U256 = parse_ether("1.0")?; 
+        let amount_in_builder: U256 = parse_ether("1.0")
+            .map_err(|e: ConversionError| eyre!(e))?; 
+        let amount_in: U256 = amount_in_builder.into(); 
         let fee = 500; 
 
         let params = ulp1_5::bindings::quoter_v2::QuoteExactInputSingleParams {
@@ -151,7 +154,9 @@ async fn test_setup_and_anvil_interactions() -> Result<()> {
         let velo_router_impl_addr = Address::from_str(VELO_ROUTER_IMPL_ADDR_FOR_SIM)?;
         let velo_router_for_test = VelodromeRouter::new(velo_router_impl_addr, sim_env.http_client.clone());
         let velo_factory_addr_from_config = config_loaded.velodrome_v2_factory_addr;
-        let amount_in_velo: U256 = parse_ether("1.0")?; 
+        let amount_in_velo_builder: U256 = parse_ether("1.0")
+            .map_err(|e: ConversionError| eyre!(e))?;
+        let amount_in_velo: U256 = amount_in_velo_builder.into(); 
 
         let routes = vec![ulp1_5::bindings::velodrome_router::Route {
             from: weth_addr,
@@ -208,7 +213,9 @@ async fn test_swap_triggers() -> Result<()> {
         let sim_env = &*sim_env_arc;
         let config_loaded = config::load_config().expect("Failed to load .env for test");
 
-        let amount_eth_in_v3: U256 = parse_ether("0.01")?;
+        let amount_eth_in_v3_builder: U256 = parse_ether("0.01")
+            .map_err(|e: ConversionError| eyre!(e))?;
+        let amount_eth_in_v3: U256 = amount_eth_in_v3_builder.into();
         let usdc_addr: Address = config_loaded.usdc_address;
         let pool_fee_v3 = 500; 
         let recipient_v3 = sim_env.wallet_address;
@@ -234,7 +241,9 @@ async fn test_swap_triggers() -> Result<()> {
 
         let weth_addr: Address = config_loaded.weth_address;
         let weth_contract = ulp1_5::bindings::IWETH9::new(weth_addr, sim_env.http_client.clone());
-        let amount_weth_for_velo_swap: U256 = parse_ether("0.001")?;
+        let amount_weth_for_velo_swap_builder: U256 = parse_ether("0.001")
+            .map_err(|e: ConversionError| eyre!(e))?;
+        let amount_weth_for_velo_swap: U256 = amount_weth_for_velo_swap_builder.into();
 
          match weth_contract.approve(velo_pool_addr, amount_weth_for_velo_swap).send().await?.await? {
             Some(receipt) if receipt.status == Some(1.into()) => {
@@ -582,12 +591,15 @@ async fn test_event_handling_triggers_arbitrage_check() -> Result<()> {
         let emitter_addr = get_minimal_swap_emitter_address();
         let emitter = MinimalSwapEmitter::new(emitter_addr, client.clone());
         
-        // Corrected based on your latest guide: parse_ether returns Result<U256, Error>
         let amount0_val: U256 = parse_ether("0.1")?; 
         let amount0 = I256::from_raw(amount0_val);
 
-        // Corrected based on your latest guide: parse_units returns Result<U256, Error>
-        let amount1_abs_val_u256: U256 = parse_units("200", 6usize)?;
+        // Corrected usage: parse_units("200", 6usize) returns Result<ParseUnits, ConversionError>
+        // ? unwraps ParseUnits (builder)
+        // .into() converts ParseUnits (builder) to U256
+        let amount1_abs_val_builder: ethers::utils::ParseUnits = parse_units("200", 6usize)
+            .map_err(|e: ConversionError| eyre!(e))?; // Map error before ?
+        let amount1_abs_val_u256: U256 = amount1_abs_val_builder.into();
         
         let amount1 = I256::from_raw(amount1_abs_val_u256) 
             .checked_mul(I256::from(-1))

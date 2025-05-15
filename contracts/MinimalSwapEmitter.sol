@@ -10,7 +10,7 @@ interface IERC20 {
 }
 
 contract MinimalSwapEmitter {
-    // Matching the UniswapV3Pool Swap event
+    // Matching the UniswapV3Pool Swap event 
     event Swap(
         address indexed sender,
         address indexed recipient,
