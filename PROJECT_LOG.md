@@ -1,5 +1,7 @@
 # PROJECT_DIRECTION_LOG.MD - ULP 1.5 Arbitrage Bot
 
+* [2025-05-13] Added WS integration test `tests/ws_event_loop_test.rs` to validate the full WebSocket event loop via `run_event_loop_ws_test` and confirm `test_arb_check_triggered`.
+
 **Last Updated:** 2025-05-13
 
 ## Current Overarching Goal:
@@ -47,9 +49,9 @@ Transition from local Anvil-based testing to production-readiness by validating 
     1.  **Implement `DRY_RUN` Mode:**
         *   Add `DRY_RUN=true/false` to `config.rs` (loaded from `.env`).
         *   Modify `transaction.rs::submit_arbitrage_transaction` to:
-            *   Perform all steps (gas estimation, encoding, etc.).
-            *   If `config.dry_run` is true, log the transaction that *would* have been sent but **DO NOT** actually send it (i.e., skip `client.send_raw_transaction()` and private relay calls).
-            *   Ensure `BalancerVault.flashLoan()` is **NOT** called.
+            *   Perform all steps (gas estimation, encoding, etc.).  
+            *   If `config.dry_run` is true, log the transaction that *would* have been sent but **DO NOT** actually send it (i.e., skip `client.send_raw_transaction()` and private relay calls).  
+            *   Ensure `BalancerVault.flashLoan()` is **NOT** called.  
         *   Consider using simplified gas estimation in dry run mode if full estimation is too slow/costly for this testing phase.
     2.  **Configuration for Mainnet Dry Run:**
         *   Use production mainnet Optimism RPCs.
@@ -66,6 +68,8 @@ Transition from local Anvil-based testing to production-readiness by validating 
         *   Logging for errors, warnings, performance bottlenecks.
         *   Verify no actual flash loan attempts are made.
     5.  **Iteration:** Continuously run, monitor, identify bugs/bottlenecks, refine configurations (gas, profit buffers based on *simulated* outcomes from live data), and improve.
+
+*   **Additional Note:** The `DRY_RUN` mode implementation ensures that all preparatory steps (gas estimation, encoding, signing) are performed, but skips on-chain submissions and flash loan invocations. This mode is critical for safely validating the bot's behavior under live network conditions without financial risk.
 
 **Integration with `ULP-1.5-Networking.md`:**
 The infrastructure and operational guidance in `ULP-1.5-Networking.md` (GCP setup, containerization, secret management, advanced monitoring, etc.) become directly applicable and highly recommended during **Phase 3 (Mainnet Dry Run)** and essential for actual production deployment. The current plan focuses on getting the bot's software ready for such an environment.

@@ -6,6 +6,8 @@ use ulp1_5::config::load_config; // Removed unused config::self
 use ulp1_5::deploy::deploy_contract_from_bytecode; // Removed unused deploy::self
 // encoding might not be needed directly in main
 use ulp1_5::event_handler::{handle_log_event, handle_new_block}; // Removed unused event_handler::self
+#[cfg(feature = "local_simulation")]
+use ulp1_5::run_event_loop_ws_test;
 // gas might not be needed directly in main
 // local_simulator only used when feature enabled, not directly in main runtime
 // path_optimizer not needed directly in main
@@ -32,7 +34,6 @@ use tokio::time::{interval, timeout, Duration};
 use tokio::task::JoinHandle;
 use chrono::Utc;
 use futures_util::{future::join_all, FutureExt};
-// Removed lazy_static import, topics now come from lib
 use tracing::{debug, error, info, warn, Level, trace};
 use tracing_subscriber::{fmt, EnvFilter};
 
@@ -62,9 +63,16 @@ async fn main() -> Result<()> {
     let arb_executor_address = if config.deploy_executor { info!("Deploying Executor..."); deploy_contract_from_bytecode(client.clone(), &config.executor_bytecode_path).await? } else { info!("Using existing executor..."); config.arb_executor_address.ok_or_else(|| eyre!("Executor address required when not deploying"))? }; info!(address = ?arb_executor_address, "Using Executor.");
 
     // Use imported AppState directly
-    let app_state = Arc::new(AppState::new(config.clone())); info!("🧠 State initialized."); let target_pair_filter = app_state.target_pair(); info!(?target_pair_filter, "Target pair set.");
-    // Use imported NonceManager directly
     let nonce_manager = Arc::new(NonceManager::new(wallet_address)); info!("🔑 Nonce Manager initialized.");
+    let app_state = Arc::new(AppState::new(
+        http_provider.clone(),
+        client.clone(),
+        nonce_manager.clone(),
+        config.clone(),
+    ));
+    info!("🧠 State initialized."); 
+    let target_pair_filter = app_state.target_pair(); 
+    info!(?target_pair_filter, "Target pair set.");
 
     info!("🔍 Fetching initial states..."); let mut tasks: Vec<JoinHandle<()>> = Vec::new(); let mut monitored = HashSet::new(); let fetch_timeout = Duration::from_secs(config.fetch_timeout_secs.unwrap_or(15));
     let mut factory_addresses_for_filter = vec![config.uniswap_v3_factory_addr, config.velodrome_v2_factory_addr]; if let Some(a) = config.aerodrome_factory_addr { factory_addresses_for_filter.push(a); }
@@ -227,7 +235,6 @@ async fn main() -> Result<()> {
     info!("🛑 Bot stopped."); Ok(())
 }
 
-
 /// Helper function to fetch initial pools for Velo-style factories.
 async fn fetch_velo_style_pools<M: Middleware + 'static>(
     dex_type: DexType,
@@ -333,5 +340,3 @@ async fn fetch_aero_style_pools(
           }
      }
 }
-
-// Removed unused helper function parse_u64_env_direct

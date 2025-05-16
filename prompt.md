@@ -7,13 +7,13 @@
 *   **Local Simulation Testing (`tests/integration_test.rs` with Anvil):**
     *   **`test_setup`:** Verifies Anvil connection, executor deployment, and includes diagnostic calls to Uniswap V3 QuoterV2 and the Velodrome V2 Router implementation. Passes.
     *   **`test_swap_triggers`:** Tests helper functions for triggering swaps on Anvil. Passes, with known potential for Velo direct swap issues on Anvil.
-    *   **`test_full_univ3_arbitrage_cycle`:** Successfully tests the end-to-end flow for UniV3 -> UniV3 arbitrage, including transaction submission to Anvil (using fake profit injection if needed). Passes.
-    *   **`test_full_arbitrage_cycle_simulation` (UniV3 -> VeloV2):** Tests the end-to-end flow for UniV3 -> VeloV2, using Velo simulation workarounds and fake profit injection. Passes, testing mechanics.
+    *   **`test_full_univ3_arbitrage_cycle`:** Successfully tests the end-to-end flow for UniV3 → UniV3 arbitrage, including transaction submission to Anvil (using fake profit injection if needed). Passes.
+    *   **`test_full_arbitrage_cycle_simulation` (UniV3 → VeloV2):** Tests the end-to-end flow for UniV3 → VeloV2, using Velo simulation workarounds and fake profit injection. Passes, testing mechanics.
     *   **`test_event_handling_triggers_arbitrage_check`:**
         *   **Current State (Enhanced):** This test has been successfully enhanced. It deploys `MinimalSwapEmitter.sol`, triggers a synthetic `Swap` event, modifies the log's address to appear as if it came from a real Uniswap V3 pool, and passes it to `handle_log_event`.
         *   **Assertions (Enhanced):** It asserts that:
             1.  The `PoolSnapshot` for the target UniV3 pool is correctly updated by `handle_log_event`.
-            2.  A test-specific flag (`test_arb_check_triggered` in `AppState`) is set to `true`, indicating that `check_for_arbitrage` was spawned by `handle_log_event` and successfully found routes (as it compares the updated pool against other snapshots, potentially finding a "route" against itself or another pool).
+            2.  A test-specific flag (`test_arb_check_triggered` in `AppState`) is set to `true`, indicating that `check_for_arbitrage` was spawned by `handle_log_event` and successfully found routes.
         *   **Known Anvil Issue:** The `fetch_and_cache_pool_state` for the *real* UniV3 pool still relies on a fallback mechanism for Anvil.
         *   This test currently passes, validating the event handling logic through to the triggering of arbitrage checks and route finding confirmation.
 *   **Workarounds for Anvil Issues:**
@@ -24,15 +24,37 @@
 *   **Compilation:** Project compiles successfully (`cargo check`, `cargo test` for compiled modules). Minor unused import warnings may exist but are non-critical.
 *   **Estimated Overall Completion:** ~96% (Core UniV3 path and event handling through to arbitrage check triggering validated locally. Velo path has workarounds for local sim. Main remaining gap is full WS loop testing).
 
+## 6. Prompt Commands
+
+### Bug fix prompt (j9 go)
+When the user enters `j9 go`, fix current code structures in all relevant files. After making changes, provide:
+1. A brief summary of fixes applied.
+2. Next steps for the user.
+
+### Project task continuation (z1.1 go)
+When the user enters `z1.1 go`, perform the next discrete task defined in this prompt, PROJECT_LOG.md, or PROJECT_FEASIBILITY.md. After making changes, provide:
+1. A brief summary of the overall task completed.
+2. Estimated percent complete.
+3. Next steps for the user.
+
+## TEST WORKFLOW AFTER j9/z1.1
+After each `j9 go` or `z1.1 go` execution and code updates, ask the user to run:
+1. `./run_me.sh` to build the project and deploy the executor.
+2. Execute integration tests:
+   ```bash
+   cargo test --features local_simulation -- --ignored --nocapture
+   ```
+3. Confirm all tests pass before continuing.
+
 ## 7. Current Task Scope & Next Steps
 
-*   **Current Task (Completed in previous interaction):** Successfully enhanced `test_event_handling_triggers_arbitrage_check`. This test now verifies that `handle_log_event` correctly processes a synthetic `Swap` log, updates the `PoolSnapshot`, and that the subsequently called `check_for_arbitrage` function successfully identifies potential routes (confirmed by a test-specific flag in `AppState`).
+*   **Current Task (Completed in previous interaction):** Successfully enhanced `test_event_handling_triggers_arbitrage_check`. This test now verifies that `handle_log_event` correctly processes a synthetic `Swap` log, updates the `PoolSnapshot`, and triggers the arbitrage check.
 *   **Immediate Next Steps (for this new session):**
     1.  **Test Main Event Loop with WS (More Complex):**
         *   Design a test that initializes the main bot components (`AppState`, `Client`, `NonceManager`, event filters).
-        *   Starts a *mocked* version of the main event loop from `main.rs` (or a simplified test-specific loop) that subscribes to Anvil's Websocket stream.
-        *   The test would then trigger a swap (using `MinimalSwapEmitter` or `trigger_v3_swap_via_router`) on Anvil.
-        *   Assert that the test's event loop receives the event via its WS subscription and correctly calls `handle_log_event`, leading to snapshot updates and the `test_arb_check_triggered` flag being set.
+        *   Start a test-specific loop via `run_event_loop_ws_test` to subscribe to Anvil’s WS stream.
+        *   Trigger a swap (using `MinimalSwapEmitter` or `trigger_v3_swap_via_router`).
+        *   Assert that the WS loop receives the event and sets `test_arb_check_triggered`.
     2.  Begin planning for live network testing (Testnet then Mainnet Dry Run) as outlined in `PROJECT_DIRECTION_LOG.md` and considering advice from `ULP-1.5-Networking.md`.
 
 *   **Lower Priority / Future:**
@@ -41,34 +63,11 @@
     *   Add support for more DEXs.
     *   Develop deployment scripts/configuration.
 
+## PROJECT LOG workflow (PW1)
+- After each j9 or z1.1 call, prepend at the top of PROJECT_LOG.md a one-line note summarizing the action (date, file(s) modified, brief summary). This must be done before returning the response.
 
-    z1.1 Protocol (Revised: Multi-File Task Output)
-Purpose: Complete one full task at a time. A task might involve creating a new feature, refactoring a module, updating documentation, implementing a test, etc.
-Behavior:
-Focuses on completing one discrete development task per interaction cycle.
-If the user prompt contains multiple independent tasks, address only one task before stopping.
-A single task may require modifications to multiple files.
-Output Requirements:
-For each completed task, output the complete and functional contents of every file modified for that task.
-Maximum 10 files per response. If a task modifies more than 10 files, list the first 10 and note that others were modified.
-No partials or code snippets. Do not use ...imports..., ...code..., etc.
-// TODO comments are allowed only if non-critical and planned for a future step.
-Reflect awareness of breaking changes, recent updates, and project direction.
-After Each Task (Outputting 1 to 10 Files):
-Stop and provide:
-A brief summary of the overall task completed.
-An estimated percent complete for the entire project.
-Wait for the next user instruction.
-Trigger: User types z1.1 go.
+## AI OUTPUT PER RESPONSE (AP1)
+After each j9 or z1.1, give a 1–2 paragraph response on why you did this in context to the scope of the project and its current task, and where you’re going next. Append this to PW1.
 
-j9 Protocol (Error Correction)
-Purpose: Fix compilation errors reported.
-Trigger: User provides the complete compiler error output and the command j9 go.
-Action: Analyze errors, determine fixes for all reported errors in the batch.
-Output: Return the complete contents of every file modified (up to 10 files per response) to fix the errors.
-Per-File Summary: After the code block for each modified file, stop and provide:
-File Updated: [path/to/filename.ext]
-Task Summary: [Brief description of fixes applied *within that specific file* for the current error batch.]
-Overall Batch Summary: After all modified files and their summaries, provide:
-Estimated Percent Complete (Current Batch): [Percentage for fixing the current set of errors.]
-Wait: Wait for the user to run the check/build/test again or provide further instructions.
+## NEXT STEP RECOMMENDATION (N1)
+When invoking N1, provide a deep recommendation on the next direction based on the last z1.1 or j9 update, considering all supporting docs, project scope, current state, and limitations. Include an estimate of remaining tokens/context and warn if nearing limits.

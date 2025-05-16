@@ -28,6 +28,10 @@ pub use transaction::NonceManager; // Re-export NonceManager
 
 // Re-export event topics if needed directly by tests/binary
 
+// expose WS test runner from event_handler
+#[cfg(feature = "local_simulation")]
+pub use event_handler::run_event_loop_ws_test;
+
 // Define lazy_static within the lib so they are accessible via the library.
 lazy_static! {
     pub static ref UNI_V3_SWAP_TOPIC: H256 = bindings::uniswap_v3_pool::SwapFilter::signature();

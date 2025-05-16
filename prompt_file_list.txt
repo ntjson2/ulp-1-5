@@ -7,6 +7,6 @@ Cargo.toml
 README.md
 PROJECT_FEASIBILITY.md
 ULP-1.5-Networking.md
-PROJECT_DIRECTION_LOG.md
+PROJECT_LOG.md
 run_me.sh
 prompt.md

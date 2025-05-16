@@ -1,0 +1,145 @@
+ntjson@LAPTOP-74NQ7BNG:/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5$ ./run_me.sh
+🔌 Spawning anvil …
+🚀 Deploying ArbitrageExecutor …
+✅ ArbitrageExecutor deployed to 0x8e45c0936fa1a65bdad3222befec6a03c83372ce
+🧪 Running integration tests …
+   Compiling ulp1_5 v0.1.0 (/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5)
+error[E0255]: the name `run_event_loop_ws_test` is defined multiple times
+   --> bot/src/main.rs:338:1
+    |
+10  |   use ulp1_5::run_event_loop_ws_test;
+    |       ------------------------------ previous import of the value `run_event_loop_ws_test` here
+...
+338 | / pub async fn run_event_loop_ws_test(
+339 | |     state: Arc<state::AppState>, 
+340 | |     ws_url: &str,
+341 | | ) -> eyre::Result<()> {
+342 | |     event_handler::run_event_loop_ws_test(state, ws_url).await
+343 | | }
+    | |_^ `run_event_loop_ws_test` redefined here
+    |
+    = note: `run_event_loop_ws_test` must be defined only once in the value namespace of this module
+help: you can use `as` to change the binding name of the import
+    |
+10  | use ulp1_5::run_event_loop_ws_test as other_run_event_loop_ws_test;
+    |                                    +++++++++++++++++++++++++++++++
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `event_handler`
+   --> bot/src/main.rs:342:5
+    |
+342 |     event_handler::run_event_loop_ws_test(state, ws_url).await
+    |     ^^^^^^^^^^^^^ use of unresolved module or unlinked crate `event_handler`
+    |
+    = help: if you wanted to use a crate named `event_handler`, use `cargo add event_handler` to add it to your `Cargo.toml`
+help: consider importing this module
+    |
+4   + use ulp1_5::event_handler;
+    |
+
+warning: unused import: `ulp1_5::run_event_loop_ws_test`
+  --> bot/src/main.rs:10:5
+   |
+10 | use ulp1_5::run_event_loop_ws_test;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+error[E0061]: this function takes 4 arguments but 1 argument was supplied
+  --> tests/ws_event_loop_test.rs:25:26
+   |
+25 |     let state = Arc::new(AppState::new(cfg));
+   |                          ^^^^^^^^^^^^^----- three arguments of type `Provider<Http>`, `Arc<SignerMiddleware<Provider<Http>, Wallet<ecdsa::signing::SigningKey<Secp256k1>>>>`, and `Arc<NonceManager>` are missing
+   |
+note: associated function defined here
+  --> /mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5/bot/src/state.rs:94:12
+   |
+94 |     pub fn new(
+   |            ^^^
+help: provide the arguments
+   |
+25 -     let state = Arc::new(AppState::new(cfg));
+25 +     let state = Arc::new(AppState::new(/* Provider<Http> */, /* Arc<SignerMiddleware<Provider<Http>, Wallet<ecdsa::signing::SigningKey<Secp256k1>>>> */, /* Arc<NonceManager> */, cfg));
+   |
+
+For more information about this error, try `rustc --explain E0061`.
+error: could not compile `ulp1_5` (test "ws_event_loop_test") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+error[E0061]: this function takes 4 arguments but 1 argument was supplied
+   --> tests/integration_test.rs:318:34
+    |
+318 |         let app_state_instance = AppState::new(config_loaded.clone());
+    |                                  ^^^^^^^^^^^^^----------------------- three arguments of type `Provider<Http>`, `Arc<SignerMiddleware<Provider<Http>, Wallet<ecdsa::signing::SigningKey<Secp256k1>>>>`, and `Arc<NonceManager>` are missing     
+    |
+note: associated function defined here
+   --> /mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5/bot/src/state.rs:94:12
+    |
+94  |     pub fn new(
+    |            ^^^
+help: provide the arguments
+    |
+318 -         let app_state_instance = AppState::new(config_loaded.clone());
+318 +         let app_state_instance = AppState::new(/* Provider<Http> */, /* Arc<SignerMiddleware<Provider<Http>, Wallet<ecdsa::signing::SigningKey<Secp256k1>>>> */, /* Arc<NonceManager> */, config_loaded.clone()); 
+    |
+
+error[E0061]: this function takes 4 arguments but 1 argument was supplied
+  --> bot/src/main.rs:66:30
+   |
+66 |     let app_state = Arc::new(AppState::new(config.clone())); info!("🧠 State initialized."); let target_pair_filter ...
+   |                              ^^^^^^^^^^^^^---------------- three arguments of type `Provider<ethers::ethers_providers::Http>`, `Arc<ethers::ethers_middleware::SignerMiddleware<Provider<ethers::ethers_providers::Http>, Wallet<ecdsa::signing::SigningKey<Secp256k1>>>>`, and `Arc<NonceManager>` are missing
+   |
+note: associated function defined here
+  --> /mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5/bot/src/state.rs:94:12
+   |
+94 |     pub fn new(
+   |            ^^^
+help: provide the arguments
+   |
+66 -     let app_state = Arc::new(AppState::new(config.clone())); info!("🧠 State initialized."); let target_pair_filter = 
+app_state.target_pair(); info!(?target_pair_filter, "Target pair set.");
+66 +     let app_state = Arc::new(AppState::new(/* Provider<ethers::ethers_providers::Http> */, /* Arc<ethers::ethers_middleware::SignerMiddleware<Provider<ethers::ethers_providers::Http>, Wallet<ecdsa::signing::SigningKey<Secp256k1>>>> */, /* Arc<NonceManager> */, config.clone())); info!("🧠 State initialized."); let target_pair_filter = app_state.target_pair(); info!(?target_pair_filter, "Target pair set.");
+   |
+
+error[E0061]: this function takes 4 arguments but 1 argument was supplied
+   --> tests/integration_test.rs:451:34
+    |
+451 |         let app_state_instance = AppState::new(config_loaded.clone());
+    |                                  ^^^^^^^^^^^^^----------------------- three arguments of type `Provider<Http>`, `Arc<SignerMiddleware<Provider<Http>, Wallet<ecdsa::signing::SigningKey<Secp256k1>>>>`, and `Arc<NonceManager>` are missing     
+    |
+note: associated function defined here
+   --> /mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5/bot/src/state.rs:94:12
+    |
+94  |     pub fn new(
+    |            ^^^
+help: provide the arguments
+    |
+451 -         let app_state_instance = AppState::new(config_loaded.clone());
+451 +         let app_state_instance = AppState::new(/* Provider<Http> */, /* Arc<SignerMiddleware<Provider<Http>, Wallet<ecdsa::signing::SigningKey<Secp256k1>>>> */, /* Arc<NonceManager> */, config_loaded.clone()); 
+    |
+
+error[E0061]: this function takes 4 arguments but 1 argument was supplied
+   --> tests/integration_test.rs:563:38
+    |
+563 |         let mut app_state_instance = AppState::new(config_loaded.clone());
+    |                                      ^^^^^^^^^^^^^----------------------- three arguments of type `Provider<Http>`, `Arc<SignerMiddleware<Provider<Http>, Wallet<ecdsa::signing::SigningKey<Secp256k1>>>>`, and `Arc<NonceManager>` are missing 
+    |
+note: associated function defined here
+   --> /mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5/bot/src/state.rs:94:12
+    |
+94  |     pub fn new(
+    |            ^^^
+help: provide the arguments
+    |
+563 -         let mut app_state_instance = AppState::new(config_loaded.clone());
+563 +         let mut app_state_instance = AppState::new(/* Provider<Http> */, /* Arc<SignerMiddleware<Provider<Http>, Wallet<ecdsa::signing::SigningKey<Secp256k1>>>> */, /* Arc<NonceManager> */, config_loaded.clone()); 
+    |
+
+Some errors have detailed explanations: E0061, E0255, E0433.
+For more information about an error, try `rustc --explain E0061`.
+warning: `ulp1_5` (bin "ulp1_5" test) generated 1 warning (1 duplicate)
+error: could not compile `ulp1_5` (bin "ulp1_5" test) due to 3 previous errors; 1 warning emitted
+warning: `ulp1_5` (bin "ulp1_5") generated 1 warning
+error: could not compile `ulp1_5` (bin "ulp1_5") due to 3 previous errors; 1 warning emitted
+error: could not compile `ulp1_5` (test "integration_test") due to 3 previous errors
+
+🛑 Shutting down anvil (pid 3407)…
+ntjson@LAPTOP-74NQ7BNG:/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5$ 

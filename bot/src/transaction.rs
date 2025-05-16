@@ -10,7 +10,7 @@ use ethers::{
     prelude::*,
     types::{
         transaction::eip2718::TypedTransaction, Address, Bytes, Eip1559TransactionRequest, U256,
-        U64, I256, TxHash,
+        U64, I256, TxHash, H256,
     },
     utils::format_units,
 };
@@ -197,8 +197,13 @@ pub async fn submit_arbitrage_transaction(
 ) -> Result<TxHash> {
     info!("Attempting submission & monitoring");
     let config = &app_state.config;
-    // FIX: Prefix unused variable
-    let _start_time = SystemTime::now();
+
+    // DRY-RUN MODE: skip on-chain submission
+    if config.dry_run {
+        info!("🌵 Dry-run mode enabled: skipping on-chain flash-loan. loan={}, profit={}", 
+              loan_amount_wei, simulated_net_profit_wei);
+        return Ok(H256::zero());
+    }
 
     // --- Prepare Tx Data ---
     trace!("Step 1: Fetching gas price...");

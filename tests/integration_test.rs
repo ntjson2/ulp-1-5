@@ -21,8 +21,7 @@ use ethers::{
     contract::EthEvent, 
     prelude::*,
     types::{Address, Bytes, U256, U64, I256}, 
-    // Re-added ConversionError and ParseUnits
-    utils::{format_units, hex, parse_ether, parse_units, ConversionError, ParseUnits}, 
+    utils::{format_units, hex, parse_ether, parse_units, ConversionError}, 
 };
 use eyre::{Result, WrapErr, eyre}; 
 use std::{fs, str::FromStr, sync::Arc, time::Duration}; 
@@ -34,7 +33,7 @@ use tracing::{error, info, warn, Level};
 // --- Constants ---
 const TEST_TIMEOUT: Duration = Duration::from_secs(240); 
 static mut MINIMAL_SWAP_EMITTER_ADDR: Option<Address> = None;
-const EMIT_SWAP_GAS_LIMIT: u64 = 500_000; 
+const EMIT_SWAP_GAS_LIMIT: u64 = 1_000_000; 
 
 // Helper to get the emitter address safely
 fn get_minimal_swap_emitter_address() -> Address {
@@ -316,9 +315,10 @@ async fn test_full_univ3_arbitrage_cycle_simulation() -> Result<()> {
         config_loaded.arb_executor_address = Some(executor_addr);
         config_loaded.deploy_executor = false; 
 
-        let app_state_instance = AppState::new(config_loaded.clone()); 
         let client = sim_env.http_client.clone();
+        let http_provider = client.provider().clone();
         let nonce_manager = Arc::new(NonceManager::new(sim_env.wallet_address));
+        let app_state_instance = AppState::new(http_provider, client.clone(), nonce_manager.clone(), config_loaded.clone()); 
 
         let univ3_pool_addr_str = SIMULATION_CONFIG.target_uniswap_v3_pool_address;
         let univ3_pool_addr = Address::from_str(univ3_pool_addr_str)?;
@@ -449,9 +449,10 @@ async fn test_full_arbitrage_cycle_simulation() -> Result<()> { // UniV3 -> Velo
         config_loaded.arb_executor_address = Some(executor_addr);
         config_loaded.deploy_executor = false;
 
-        let app_state_instance = AppState::new(config_loaded.clone()); 
         let client = sim_env.http_client.clone();
+        let http_provider = client.provider().clone();
         let nonce_manager = Arc::new(NonceManager::new(sim_env.wallet_address));
+        let app_state_instance = AppState::new(http_provider, client.clone(), nonce_manager.clone(), config_loaded.clone()); 
 
         let univ3_pool_addr_str = SIMULATION_CONFIG.target_uniswap_v3_pool_address;
         let univ3_pool_addr = Address::from_str(univ3_pool_addr_str)?;
@@ -561,9 +562,10 @@ async fn test_event_handling_triggers_arbitrage_check() -> Result<()> {
         config_loaded.arb_executor_address = Some(executor_addr);
         config_loaded.deploy_executor = false; 
 
-        let mut app_state_instance = AppState::new(config_loaded.clone()); 
         let client = sim_env.http_client.clone();
+        let http_provider = client.provider().clone();
         let nonce_manager = Arc::new(NonceManager::new(sim_env.wallet_address));
+        let mut app_state_instance = AppState::new(http_provider, client.clone(), nonce_manager.clone(), config_loaded.clone()); 
 
         let target_pool_address_str = SIMULATION_CONFIG.target_uniswap_v3_pool_address;
         let target_pool_address = Address::from_str(target_pool_address_str)?;

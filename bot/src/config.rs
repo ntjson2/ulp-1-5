@@ -64,6 +64,8 @@ pub struct Config {
     pub critical_block_lag_seconds: u64, // Added field
     pub critical_log_lag_seconds: u64,   // Added field
 
+    // Dry Run Option
+    pub dry_run: bool,
 }
 
 // --- Parsing helpers ---
@@ -151,6 +153,10 @@ pub fn load_config() -> Result<Config> {
     let critical_block_lag_seconds = parse_u64_env("CRITICAL_BLOCK_LAG_SECONDS", 300); // Default 300s
     let critical_log_lag_seconds = parse_u64_env("CRITICAL_LOG_LAG_SECONDS", 300); // Default 300s
 
+    // --- Load Dry Run Option ---
+    let dry_run = env::var("DRY_RUN")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
 
     // --- Construct Config ---
     let config = Config {
@@ -164,6 +170,7 @@ pub fn load_config() -> Result<Config> {
         gas_limit_buffer_percentage, min_flashloan_gas_limit, private_rpc_url, secondary_private_rpc_url,
         min_profit_buffer_bps, min_profit_abs_buffer_wei_str,
         critical_block_lag_seconds, critical_log_lag_seconds, // Added fields
+        dry_run,
     };
     info!("✅ Config loaded."); debug!(?config); Ok(config)
 }

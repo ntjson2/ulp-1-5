@@ -1,21 +1,21 @@
 // bot/src/state.rs
 
 // --- Imports ---
-use crate::bindings::{AerodromePool, UniswapV3Pool, VelodromeV2Pool}; 
+use crate::bindings::{AerodromePool, UniswapV3Pool, VelodromeV2Pool};
 use crate::config::Config;
+use crate::transaction::NonceManager;
 use dashmap::DashMap;
 use ethers::{
     prelude::*,
     types::{Address, U256, U64},
-    utils::parse_units, 
+    utils::parse_units,
 };
-use eyre::{eyre, Result}; 
+use eyre::{eyre, Result};
 use std::{str::FromStr, sync::Arc};
-#[cfg(feature = "local_simulation")] 
+#[cfg(feature = "local_simulation")]
 use tokio::sync::Mutex;
 use tokio::time::{timeout, Duration, sleep};
 use tracing::{error, info, instrument, trace, warn, debug};
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DexType {
@@ -82,11 +82,25 @@ pub struct AppState {
     pub usdc_decimals: u8,
     #[cfg(feature = "local_simulation")]
     pub test_arb_check_triggered: Option<Arc<Mutex<bool>>>,
+    /// HTTP provider for on-chain reads
+    pub http_provider: Provider<Http>,
+    /// Signer middleware client for state-changing txns
+    pub client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
+    /// Nonce manager for transaction sequencing
+    pub nonce_manager: Arc<NonceManager>,
 }
 
 impl AppState {
-    pub fn new(config: Config) -> Self {
+    pub fn new(
+        http_provider: Provider<Http>,
+        client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
+        nonce_manager: Arc<NonceManager>,
+        config: Config,
+    ) -> Self {
         Self {
+            http_provider,
+            client,
+            nonce_manager,
             weth_address: config.weth_address,
             usdc_address: config.usdc_address,
             weth_decimals: config.weth_decimals,
@@ -95,7 +109,7 @@ impl AppState {
             pool_states: Default::default(),
             pool_snapshots: Default::default(),
             #[cfg(feature = "local_simulation")]
-            test_arb_check_triggered: None, 
+            test_arb_check_triggered: None,
         }
     }
     pub fn target_pair(&self) -> Option<(Address, Address)> {
@@ -117,7 +131,6 @@ impl AppState {
     }
 }
 
-
 /// Fetches the detailed state for a given pool and caches it.
 #[instrument(skip_all, fields(pool=%pool_addr, dex=?dex_type), level="info")]
 pub async fn fetch_and_cache_pool_state(
@@ -130,7 +143,7 @@ pub async fn fetch_and_cache_pool_state(
     info!("Fetching state...");
     let weth_addr = app_state.weth_address;
     let timeout_dur = Duration::from_secs(app_state.config.fetch_timeout_secs.unwrap_or(15));
-    let call_delay = Duration::from_millis(200); 
+    let call_delay = Duration::from_millis(200);
 
     let fetch_logic = async {
         match dex_type {
@@ -169,11 +182,11 @@ pub async fn fetch_and_cache_pool_state(
                         warn!("LOCAL SIMULATION: Direct UniV3 pool calls failed for {}. Using fallback with hardcoded/default values.", pool_addr);
                         t0_res = app_state.weth_address;
                         t1_res = app_state.usdc_address;
-                        fee_res_val = 500; 
-                        sqrtp_val = U256::from_dec_str("33762070975509198366879000000")?; 
-                        tick_val = 204000; 
+                        fee_res_val = 500;
+                        sqrtp_val = U256::from_dec_str("33762070975509198366879000000")?;
+                        tick_val = 204000;
                         warn!("Using placeholder sqrtP={}, tick={} for local sim fallback for pool {}", sqrtp_val, tick_val, pool_addr);
-                        success = true; 
+                        success = true;
                     }
                     #[cfg(not(feature = "local_simulation"))]
                     {
@@ -184,10 +197,10 @@ pub async fn fetch_and_cache_pool_state(
                          if t0_res.is_zero() || t1_res.is_zero() {
                             eyre::bail!("Failed to fetch all required UniV3 pool data for {} after individual attempts.", pool_addr);
                          }
-                         success = true; 
+                         success = true;
                     }
                 }
-                if !success { 
+                if !success {
                     eyre::bail!("Failed to obtain all necessary UniV3 data for pool {}", pool_addr);
                 }
 
@@ -205,7 +218,7 @@ pub async fn fetch_and_cache_pool_state(
                 Ok((ps, sn))
             }
             DexType::VelodromeV2 | DexType::Aerodrome => {
-                let (mut r0, mut r1, mut t0, mut t1, mut s_res) = 
+                let (mut r0, mut r1, mut t0, mut t1, mut s_res) =
                     (U256::zero(), U256::zero(), Address::zero(), Address::zero(), false);
                 let mut success = false;
 
@@ -235,21 +248,21 @@ pub async fn fetch_and_cache_pool_state(
                         }
                     }
                 }
-                
+
                 if !success {
                     #[cfg(feature = "local_simulation")]
                     {
                         warn!("LOCAL SIMULATION: Direct {:?} pool calls failed for {}. Using fallback.", dex_type, pool_addr);
-                        t0 = app_state.weth_address; 
-                        t1 = app_state.usdc_address; 
-                        if t0 == app_state.weth_address { 
+                        t0 = app_state.weth_address;
+                        t1 = app_state.usdc_address;
+                        if t0 == app_state.weth_address {
                             r0 = parse_units("100", app_state.weth_decimals as u32)?.into(); // Cast u8 to u32
                             r1 = parse_units("200000", app_state.usdc_decimals as u32)?.into(); // Cast u8 to u32
-                        } else { 
+                        } else {
                             r0 = parse_units("200000", app_state.usdc_decimals as u32)?.into(); // Cast u8 to u32
                             r1 = parse_units("100", app_state.weth_decimals as u32)?.into(); // Cast u8 to u32
                         }
-                        s_res = true; 
+                        s_res = true;
                         warn!("Using placeholder reserves r0={}, r1={}, stable={} for local sim fallback for pool {}", r0, r1, s_res, pool_addr);
                         success = true;
                     }
@@ -263,10 +276,10 @@ pub async fn fetch_and_cache_pool_state(
                          t1 = if dex_type == DexType::VelodromeV2 { VelodromeV2Pool::new(pool_addr, client.clone()).token_1().call().await.map_err(|e| eyre!(e))? } else { AerodromePool::new(pool_addr, client.clone()).token_1().call().await.map_err(|e| eyre!(e))? };
                          sleep(call_delay).await;
                          s_res = if dex_type == DexType::VelodromeV2 { VelodromeV2Pool::new(pool_addr, client.clone()).stable().call().await.map_err(|e| eyre!(e))? } else { AerodromePool::new(pool_addr, client.clone()).stable().call().await.map_err(|e| eyre!(e))? };
-                         success = true; 
+                         success = true;
                     }
                 }
-                 if !success { 
+                 if !success {
                     eyre::bail!("Failed to obtain all necessary {:?} data for pool {}", dex_type, pool_addr);
                 }
 
@@ -298,7 +311,7 @@ pub async fn fetch_and_cache_pool_state(
         Ok(Err(e)) => {
             let err_msg = format!("Fetch state logic failed for pool {} ({:?}): {:?}", pool_addr, dex_type, e);
             error!("{}", err_msg);
-            Err(eyre!(err_msg)) 
+            Err(eyre!(err_msg))
         }
         Err(_) => {
             let err_msg = format!("Timeout fetching pool state for {} ({:?}) after {}s", pool_addr, dex_type, timeout_dur.as_secs());
@@ -315,6 +328,6 @@ pub fn is_target_pair_option(
 ) -> bool {
     match target {
         Some((ta, tb)) => (a0 == ta && a1 == tb) || (a0 == tb && a1 == ta),
-        None => true, 
+        None => true,
     }
 }
