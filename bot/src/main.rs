@@ -6,8 +6,6 @@ use ulp1_5::config::load_config; // Removed unused config::self
 use ulp1_5::deploy::deploy_contract_from_bytecode; // Removed unused deploy::self
 // encoding might not be needed directly in main
 use ulp1_5::event_handler::{handle_log_event, handle_new_block}; // Removed unused event_handler::self
-#[cfg(feature = "local_simulation")]
-use ulp1_5::run_event_loop_ws_test;
 // gas might not be needed directly in main
 // local_simulator only used when feature enabled, not directly in main runtime
 // path_optimizer not needed directly in main

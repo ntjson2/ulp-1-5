@@ -27,14 +27,17 @@
 ## 6. Prompt Commands
 
 ### Bug fix prompt (j9 go)
-When the user enters `j9 go`, fix current code structures in all relevant files. After making changes, provide:
-1. A brief summary of fixes applied.
-2. Next steps for the user.
+When the user enters `j9 go`:
+1.  Read and analyze `results.txt` for compiler errors, warnings, or notes.
+2.  Fix current code structures in all relevant files based on that analysis.
+3.  After making changes, provide:
+    a. A brief summary of fixes applied.  
+    b. Next steps for the user.
 
 ### Project task continuation (z1.1 go)
-When the user enters `z1.1 go`, perform the next discrete task defined in this prompt, PROJECT_LOG.md, or PROJECT_FEASIBILITY.md. After making changes, provide:
+When the user enters `z1.1 go`, Review project scope and goals, perform the next discrete task needed for the project starting with code updates. Then LOG1. After making changes, provide:
 1. A brief summary of the overall task completed.
-2. Estimated percent complete.
+2. Edit code files for the next step in the task sequence.
 3. Next steps for the user.
 
 ## TEST WORKFLOW AFTER j9/z1.1
@@ -71,3 +74,11 @@ After each j9 or z1.1, give a 1–2 paragraph response on why you did this in co
 
 ## NEXT STEP RECOMMENDATION (N1)
 When invoking N1, provide a deep recommendation on the next direction based on the last z1.1 or j9 update, considering all supporting docs, project scope, current state, and limitations. Include an estimate of remaining tokens/context and warn if nearing limits.
+
+## Append to log (LOG1)
+- When invoked, append to the bottom of `PROJECT_LOG.md`:
+  - A unique Log ID (e.g., `LOG#`)
+  - Current date and time (ISO 8601)
+  - Brief status summary (tests run, pass/fail counts)
+  - Next steps/actions
+  - AI helper signature (e.g., `— GitHub Copilot`)

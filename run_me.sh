@@ -27,6 +27,13 @@ trap cleanup INT TERM EXIT
 # Give anvil a couple seconds to start
 sleep 3
 
+# Give anvil a moment to start listening
+echo "⏳ Waiting for Anvil RPC at ${ANVIL_RPC}..."
+until echo > /dev/tcp/127.0.0.1/${ANVIL_PORT}; do
+  sleep 1
+done
+echo "✅ Anvil is ready."
+
 # ----------------------------------------------------------------------------------
 # 2. Deploy ArbitrageExecutor with cast
 # ----------------------------------------------------------------------------------
