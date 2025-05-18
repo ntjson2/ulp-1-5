@@ -77,3 +77,21 @@ async fn test_ws_event_loop_triggers_arbitrage() -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod integration_tests {
+    use ulp1_5::run_event_loop_ws_test;
+    use std::error::Error;
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_ws_event_loop_triggers_arbitrage() -> Result<(), Box<dyn Error>> {
+        let ws_url = "ws://127.0.0.1:8545/ws";
+        let http_url = "http://127.0.0.1:8545";
+        let minimal_emitter = "<MINIMAL_SWAP_EMITTER_ADDRESS>";
+
+        let triggered = run_event_loop_ws_test(ws_url, http_url, minimal_emitter).await?;
+        assert!(triggered, "WS loop did not detect arbitrage trigger");
+        Ok(())
+    }
+}

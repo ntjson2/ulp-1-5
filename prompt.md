@@ -40,6 +40,16 @@ When the user enters `z1.1 go`, Review project scope and goals, perform the next
 2. Edit code files for the next step in the task sequence.
 3. Next steps for the user.
 
+### WS Loop Test prompt (ws1 go)
+When the user enters `ws1 go`:
+1.  Initialize and run a WebSocket‐based event‐loop test:
+    • Implement or update `run_event_loop_ws_test` in `bot/src/event_loop.rs`.  
+    • Subscribe to Anvil’s WS stream and trigger a swap.  
+    • Assert that `test_arb_check_triggered` in `AppState` becomes `true`.  
+2.  After code updates, provide:
+    a. Short summary of changes.  
+    b. Next steps to run and verify the WS integration test.
+
 ## TEST WORKFLOW AFTER j9/z1.1
 After each `j9 go` or `z1.1 go` execution and code updates, ask the user to run:
 1. `./run_me.sh` to build the project and deploy the executor.

@@ -12,13 +12,10 @@ pub mod config;
 pub mod deploy;
 pub mod encoding;
 pub mod event_handler;
-pub mod gas;
-#[cfg(feature = "local_simulation")] // Conditionally compile local_simulator
-pub mod local_simulator;
 pub mod path_optimizer;
 pub mod simulation;
-pub mod state;
 pub mod transaction;
+pub mod gas;
 pub mod utils;
 
 // Public types/constants re-exported for convenience
@@ -39,3 +36,5 @@ lazy_static! {
     pub static ref VELO_AERO_SWAP_TOPIC: H256 = bindings::velodrome_v2_pool::SwapFilter::signature();
     pub static ref VELO_AERO_POOL_CREATED_TOPIC: H256 = bindings::i_velodrome_factory::PoolCreatedFilter::signature();
 }
+
+mod event_loop;

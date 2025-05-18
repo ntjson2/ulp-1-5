@@ -1,6 +1,7 @@
 // tests/integration_test.rs
 #![cfg(feature = "local_simulation")] // Only compile when local_simulation feature is enabled
 #![allow(clippy::all)] // Suppress clippy warnings for test code
+#![allow(static_mut_refs)] // Suppress static_mut_refs warnings
 
 // --- Imports from our library ---
 use ulp1_5::{

@@ -110,7 +110,13 @@ The core Rust application and Huff contract have been architected to support the
 ## 7. Current Status & Next Steps
 
 *   **Status:** The core Rust application and Huff contract are implemented. Code compiles cleanly (`cargo check`). Integration test structure exists. Focus has been on fixing compilation issues (Rust & Huff) and implementing the sequential test cycle.
-*   **Estimated Overall Completion:** ~89% (relative to Phase 1 goals, core dev done, testing needed).
-*   **IMMEDIATE NEXT STEP:** **Execute Anvil Integration Tests.** Run `cargo test --features local_simulation -- --ignored --nocapture` against a correctly configured Anvil instance. Analyze results, debug any failures in the interaction logic or prerequisites.
-*   **Near-Term:** Refine based on test results. Implement basic external alerting. Prepare for initial cloud VPS deployment and monitoring.
+*   **Estimated Overall Completion:** ~89% (core dev done, testing needed).
+*   **IMMEDIATE NEXT STEP:**  
+    1. **Execute Anvil Integration Tests:**  
+       ```bash
+       cargo test --features local_simulation -- --ignored --nocapture
+       ```  
+    2. **Implement WS Event Loop Test:**  
+       Develop and run `run_event_loop_ws_test` to validate real-time WS event handling and arbitrage triggering.
+*   **Near-Term:** Refine based on test results, implement external alerting, prepare cloud VPS deployment and monitoring.
 *   **Future:** Address lower-priority TODOs (UniV3 sizing), add more DEXs, explore Phase 2 infrastructure.

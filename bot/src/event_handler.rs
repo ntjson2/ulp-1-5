@@ -297,7 +297,7 @@ pub async fn check_for_arbitrage(
                  sim_state.clone(),
                  &route, 
                  buy_snapshot_option.as_ref(),
-                 sell_snapshot_option.as_ref(),
+                 sellSnapshotOption.as_ref(),
                  current_gas_price_gwei,
              ).await;
 
@@ -337,31 +337,5 @@ pub async fn check_for_arbitrage(
         }); 
     } 
 
-    Ok(())
-}
-
-#[cfg(feature = "local_simulation")]
-pub async fn run_event_loop_ws_test(
-    state: Arc<AppState>,
-    ws_url: &str,
-) -> eyre::Result<()> {
-    // extract client and nonce manager from AppState
-    let client = state.client.clone();
-    let nonce_mgr = state.nonce_manager.clone();
-
-    // connect via WebSocket
-    let ws_provider = Provider::<Ws>::connect(ws_url).await?;
-    let filter = Filter::new().event("Swap");
-    let mut stream = ws_provider.subscribe_logs(&filter).await?;
-
-    // loop until the test flag is set
-    while let Some(log) = stream.next().await {
-        handle_log_event(log, state.clone(), client.clone(), nonce_mgr.clone()).await?;
-        if let Some(flag) = &state.test_arb_check_triggered {
-            if *flag.lock().await {
-                break;
-            }
-        }
-    }
     Ok(())
 }

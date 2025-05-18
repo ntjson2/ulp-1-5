@@ -102,3 +102,9 @@ The infrastructure and operational guidance in `ULP-1.5-Networking.md` (GCP setu
 - Scheduled implementation of a graceful shutdown signal in `run_event_loop_ws_test` to exit the WS loop cleanly and restore the flag assertion.  
 - Estimated completion: ~98%.  
 - Next: refactor the WS test harness to use a `oneshot` or `watch` channel, send the shutdown signal when the event is received, and re-enable the assertion.
+
+## Review - 2025-05-20
+- Reviewed prompt.md, PROJECT_FEASIBILITY.md, PROJECT_LOG.md, ULP-1.5-Networking.md.
+- Updated next steps to include WS-loop test.
+
+LOG#1 2025-05-20T15:00:00Z: Added WebSocket event-loop test scaffold (`event_loop.rs`) and integration test (`ws_event_loop_test.rs`); wired module into `lib.rs`. Next: implement WS subscription and swap trigger logic. — GitHub Copilot

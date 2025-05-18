@@ -1,222 +1,110 @@
-ntjson@LAPTOP-74NQ7BNG:/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5$
+Welcome to Ubuntu 20.04.2 LTS (GNU/Linux 5.15.167.4-microsoft-standard-WSL2 x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/advantage
+
+  System information as of Sun May 18 00:12:29 MDT 2025
+
+  System load:  0.08                Processes:             15
+  Usage of /:   0.6% of 1006.85GB   Users logged in:       0
+  Memory usage: 4%                  IPv4 address for eth0: 172.26.36.205
+  Swap usage:   0%
+
+
+316 updates can be installed immediately.
+224 of these updates are security updates.
+To see these additional updates run: apt list --upgradable
 
 
 
-ntjson@LAPTOP-74NQ7BNG:/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5$
-ntjson@LAPTOP-74NQ7BNG:/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5$
-
-
-ntjson@LAPTOP-74NQ7BNG:/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5$
+This message is shown once a day. To disable it please create the
+/home/ntjson/.hushlogin file.
 ntjson@LAPTOP-74NQ7BNG:/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5$ ./run_me.sh
 🔌 Spawning anvil …
 ⏳ Waiting for Anvil RPC at http://127.0.0.1:8545...
-./run_me.sh: connect: Connection refused
-./run_me.sh: line 32: /dev/tcp/127.0.0.1/8545: Connection refused
 ✅ Anvil is ready.
 🚀 Deploying ArbitrageExecutor …
 ✅ ArbitrageExecutor deployed to 0x8e45c0936fa1a65bdad3222befec6a03c83372ce
 🧪 Running integration tests …
    Compiling ulp1_5 v0.1.0 (/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5)
-warning: unused imports: `info` and `warn`
- --> tests/ws_event_loop_test.rs:8:15     
+warning: unused import: `std::time::Duration`
+ --> bot/src/event_loop.rs:2:5
   |
-8 | use tracing::{warn, info};
-  |               ^^^^  ^^^^
+2 | use std::time::Duration;
+  |     ^^^^^^^^^^^^^^^^^^^
   |
   = note: `#[warn(unused_imports)]` on by default
 
-warning: call to `.clone()` on a reference in this situation does nothing
-  --> tests/ws_event_loop_test.rs:33:39
+warning: unused import: `tokio::time::timeout`
+ --> bot/src/event_loop.rs:3:5
+  |
+3 | use tokio::time::timeout;
+  |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `run_event_loop_ws_test` is never used
+ --> bot/src/event_loop.rs:5:14
+  |
+5 | pub async fn run_event_loop_ws_test(
+  |              ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` on by default
+
+warning: `ulp1_5` (lib) generated 3 warnings (1 duplicate) (run `cargo fix --lib -p ulp1_5` to apply 2 suggestions)
+warning: unused import: `super::*`
+  --> tests/ws_event_loop_test.rs:83:9
    |
-33 |         SIMULATION_CONFIG.anvil_ws_url.clone(),
-   |                                       ^^^^^^^^ help: remove this redundant call
+83 |     use super::*;
+   |         ^^^^^^^^
    |
-   = note: the type `str` does not implement `Clone`, so calling `clone` on `&str` copies the reference, which does not do anything and can be removed
-   = note: `#[warn(noop_method_call)]` on by default
+   = note: `#[warn(unused_imports)]` on by default
 
-warning: `ulp1_5` (test "ws_event_loop_test") generated 2 warnings (run `cargo fix --test "ws_event_loop_test"` to apply 2 suggestions)
-warning: creating a shared reference to mutable static is discouraged
-  --> tests/integration_test.rs:81:20
+error[E0061]: this function takes 2 arguments but 3 arguments were supplied
+   --> tests/ws_event_loop_test.rs:93:25
+    |
+93  |         let triggered = run_event_loop_ws_test(ws_url, http_url, minimal_emitter).await?;
+    |                         ^^^^^^^^^^^^^^^^^^^^^^                   --------------- unexpected argument #3 of type `&str`
+    |
+note: expected `Arc<AppState>`, found `&str`
+   --> tests/ws_event_loop_test.rs:93:48
+    |
+93  |         let triggered = run_event_loop_ws_test(ws_url, http_url, minimal_emitter).await?;
+    |                                                ^^^^^^
+    = note: expected struct `Arc<AppState>`
+            found reference `&str`
+note: function defined here
+   --> /mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5/bot/src/event_handler.rs:344:14
+    |
+344 | pub async fn run_event_loop_ws_test(
+    |              ^^^^^^^^^^^^^^^^^^^^^^
+help: remove the extra argument
+    |
+93  -         let triggered = run_event_loop_ws_test(ws_url, http_url, minimal_emitter).await?;
+93  +         let triggered = run_event_loop_ws_test(/* Arc<AppState> */, http_url).await?;
+    |
+
+error[E0600]: cannot apply unary operator `!` to type `()`
+  --> tests/ws_event_loop_test.rs:94:9
    |
-81 |                 if MINIMAL_SWAP_EMITTER_ADDR.is_none() {
-   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ shared reference to mutable static
+94 |         assert!(triggered, "WS loop did not detect arbitrage trigger");
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot apply unary operator `!`
    |
-   = note: for more information, see <https://doc.rust-lang.org/nightly/edition-guide/rust-2024/static-mut-references.html>
-   = note: shared references to mutable statics are dangerous; it's undefined behavior if the static is mutated or if a mutable reference is created for it while the shared reference lives
-   = note: `#[warn(static_mut_refs)]` on by default
+   = note: this error originates in the macro `assert` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-warning: creating a shared reference to mutable static is discouraged
-  --> tests/integration_test.rs:89:25
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `anyhow`
+  --> tests/ws_event_loop_test.rs:88:57
    |
-89 |             if unsafe { MINIMAL_SWAP_EMITTER_ADDR.is_none()} {
-   |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ shared reference to mutable static
+88 |     async fn test_ws_event_loop_triggers_arbitrage() -> anyhow::Result<()> {
+   |                                                         ^^^^^^ use of unresolved module or unlinked crate `anyhow`
    |
-   = note: for more information, see <https://doc.rust-lang.org/nightly/edition-guide/rust-2024/static-mut-references.html>
-   = note: shared references to mutable statics are dangerous; it's undefined behavior if the static is mutated or if a mutable reference is created for it while the shared reference lives
+   = help: if you wanted to use a crate named `anyhow`, use `cargo add anyhow` to add it to your `Cargo.toml`
 
-warning: `ulp1_5` (test "integration_test") generated 2 warnings
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 7m 22s
-     Running unittests bot/src/lib.rs (target/debug/deps/ulp1_5-6137df622e508cfd)
+Some errors have detailed explanations: E0061, E0433, E0600.
+For more information about an error, try `rustc --explain E0061`.
+warning: `ulp1_5` (test "ws_event_loop_test") generated 1 warning
+error: could not compile `ulp1_5` (test "ws_event_loop_test") due to 3 previous errors; 1 warning emitted
+warning: build failed, waiting for other jobs to finish...
+warning: `ulp1_5` (lib test) generated 3 warnings (2 duplicates)
 
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-     Running unittests bot/src/main.rs (target/debug/deps/ulp1_5-cebcf19778b65536)
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-     Running tests/integration_test.rs (target/debug/deps/integration_test-d1d845ab162d7030)
-
-running 5 tests
-test test_event_handling_triggers_arbitrage_check ... 2025-05-17T05:51:29.176402Z  INFO integration_test: 🧪 Setting up test suite with Anvil...
-2025-05-17T05:51:29.317757Z  INFO sim_setup: ulp1_5::local_simulator: Setting up simulation environment...
-2025-05-17T05:51:30.510693Z  INFO sim_setup: ulp1_5::local_simulator: Connected to Anvil (Chain ID: 10, Wallet: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266)
-2025-05-17T05:51:30.510781Z  INFO sim_setup: ulp1_5::local_simulator: Deploying Executor contract via Anvil...
-2025-05-17T05:51:38.169971Z  INFO sim_setup: ulp1_5::local_simulator: ✅ Executor deployed to Anvil at: 0xbee6ffc1e8627f51ccdf0b4399a1e1abc5165f15
-2025-05-17T05:51:45.449696Z  INFO integration_test: ✅ MinimalSwapEmitter deployed (or was already present) at: 0xc32609c91d6b6b51d48f2611308fef121b02041f
-2025-05-17T05:51:45.450154Z  INFO integration_test: ✅ Anvil Test Suite Setup Complete (or attempted).
-2025-05-17T05:51:45.450569Z  INFO integration_test: [test_event_handling_triggers_arbitrage_check] Starting test logic...
-2025-05-17T05:51:45.451362Z  INFO ulp1_5::config: Loading configuration...
-2025-05-17T05:51:45.850768Z  INFO ulp1_5::config: ✅ Config loaded.
-2025-05-17T05:51:45.866276Z  INFO integration_test: [test_event_handling_triggers_arbitrage_check] Fetching initial state for target UniV3 pool 0x8514…08ef (may use fallback on Anvil)
-2025-05-17T05:51:45.866777Z  INFO fetch_and_cache_pool_state{pool=0x8514…08ef dex=UniswapV3}: ulp1_5::state: Fetching state...
-2025-05-17T05:51:46.145606Z  WARN fetch_and_cache_pool_state{pool=0x8514…08ef dex=UniswapV3}: ulp1_5::state: LOCAL SIMULATION: Direct UniV3 pool calls failed for 0x8514…08ef. Using fallback with hardcoded/default values.
-2025-05-17T05:51:46.145984Z  WARN fetch_and_cache_pool_state{pool=0x8514…08ef dex=UniswapV3}: ulp1_5::state: Using placeholder sqrtP=33762070975509198366879000000, tick=204000 for local sim fallback for pool 0x8514…08ef
-2025-05-17T05:51:46.146669Z  INFO fetch_and_cache_pool_state{pool=0x8514…08ef dex=UniswapV3}: ulp1_5::state: State fetched successfully for pool 0x8514…08ef.
-2025-05-17T05:51:46.211873Z  INFO integration_test: [test_event_handling_triggers_arbitrage_check] Emitting synthetic Swap event from MinimalSwapEmitter at 0xc326…041f 
-2025-05-17T05:51:53.259169Z  WARN integration_test: [test_event_handling_triggers_arbitrage_check] emitMinimalSwap receipt has no logs (Anvil fork may omit them)
-ok
-test test_full_arbitrage_cycle_simulation ... 2025-05-17T05:51:53.261989Z  INFO integration_test: 🧪 Setting up test suite with Anvil...
-2025-05-17T05:51:53.262370Z  INFO sim_setup: ulp1_5::local_simulator: Setting up simulation environment...
-2025-05-17T05:51:53.270856Z  INFO sim_setup: ulp1_5::local_simulator: Connected to Anvil (Chain ID: 10, Wallet: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266)
-2025-05-17T05:51:53.271065Z  INFO sim_setup: ulp1_5::local_simulator: Deploying Executor contract via Anvil...
-2025-05-17T05:52:00.527688Z  INFO sim_setup: ulp1_5::local_simulator: ✅ Executor deployed to Anvil at: 0x10e38ee9dd4c549b61400fc19347d00ed3edafc4
-2025-05-17T05:52:07.780428Z  INFO integration_test: ✅ MinimalSwapEmitter deployed (or was already present) at: 0xc32609c91d6b6b51d48f2611308fef121b02041f
-2025-05-17T05:52:07.780612Z  INFO integration_test: ✅ Anvil Test Suite Setup Complete (or attempted).
-2025-05-17T05:52:07.780702Z  INFO integration_test: [test_full_arbitrage_cycle_simulation_univ3_velo] Starting test logic...
-2025-05-17T05:52:07.780785Z  INFO ulp1_5::config: Loading configuration...
-2025-05-17T05:52:07.789706Z  INFO ulp1_5::config: ✅ Config loaded.
-2025-05-17T05:52:07.789899Z  INFO integration_test: [test_full_arbitrage_cycle_simulation_univ3_velo] Fetching state for UniV3 pool 0x8514…08ef
-2025-05-17T05:52:07.790086Z  INFO fetch_and_cache_pool_state{pool=0x8514…08ef dex=UniswapV3}: ulp1_5::state: Fetching state...
-2025-05-17T05:52:07.793576Z  WARN fetch_and_cache_pool_state{pool=0x8514…08ef dex=UniswapV3}: ulp1_5::state: LOCAL SIMULATION: Direct UniV3 pool calls failed for 0x8514…08ef. Using fallback with hardcoded/default values.
-2025-05-17T05:52:07.793756Z  WARN fetch_and_cache_pool_state{pool=0x8514…08ef dex=UniswapV3}: ulp1_5::state: Using placeholder sqrtP=33762070975509198366879000000, tick=204000 for local sim fallback for pool 0x8514…08ef
-2025-05-17T05:52:07.793982Z  INFO fetch_and_cache_pool_state{pool=0x8514…08ef dex=UniswapV3}: ulp1_5::state: State fetched successfully for pool 0x8514…08ef.
-2025-05-17T05:52:07.794185Z  INFO integration_test: [test_full_arbitrage_cycle_simulation_univ3_velo] Fetching state for Velodrome V2 pool 0x207a…6488
-2025-05-17T05:52:07.794327Z  INFO fetch_and_cache_pool_state{pool=0x207a…6488 dex=VelodromeV2}: ulp1_5::state: Fetching state...
-2025-05-17T05:52:08.049910Z  WARN fetch_and_cache_pool_state{pool=0x207a…6488 dex=VelodromeV2}: ulp1_5::state: LOCAL SIMULATION: Direct VelodromeV2 pool calls failed for 0x207a…6488. Using fallback.
-2025-05-17T05:52:08.050130Z  WARN fetch_and_cache_pool_state{pool=0x207a…6488 dex=VelodromeV2}: ulp1_5::state: Using placeholder reserves r0=100000000000000000000, r1=200000000000, stable=true for local sim fallback for pool 0x207a…6488
-2025-05-17T05:52:08.050290Z  INFO fetch_and_cache_pool_state{pool=0x207a…6488 dex=VelodromeV2}: ulp1_5::state: State fetched successfully for pool 0x207a…6488.
-2025-05-17T05:52:08.050513Z  INFO integration_test: [test_full_arbitrage_cycle_simulation_univ3_velo] Created test RouteCandidate: RouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x207addb05c548f262219f6b50eadff8640ed6488, buy_dex_type: UniswapV3, sell_dex_type: VelodromeV2, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: None, buy_pool_stable: None, sell_pool_stable: Some(true), buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x25cbddb98b35ab1ff795324516342fac4845718f, zero_for_one_a: true, estimated_profit_usd: 1.0 }
-2025-05-17T05:52:08.050704Z  INFO integration_test: [test_full_arbitrage_cycle_simulation_univ3_velo] Finding optimal loan amount for UniV3->VeloV2 route...
-2025-05-17T05:52:08.050890Z  INFO find_optimal_loan_amount{route=RouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x207addb05c548f262219f6b50eadff8640ed6488, buy_dex_type: UniswapV3, sell_dex_type: VelodromeV2, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: None, buy_pool_stable: None, sell_pool_stable: Some(true), buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x25cbddb98b35ab1ff795324516342fac4845718f, zero_for_one_a: true, estimated_profit_usd: 1.0 }}: ulp1_5::simulation: Searching optimal loan amount...
-2025-05-17T05:52:08.051068Z  INFO find_optimal_loan_amount{route=RouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x207addb05c548f262219f6b50eadff8640ed6488, buy_dex_type: UniswapV3, sell_dex_type: VelodromeV2, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: None, buy_pool_stable: None, sell_pool_stable: Some(true), buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x25cbddb98b35ab1ff795324516342fac4845718f, zero_for_one_a: true, estimated_profit_usd: 1.0 }}: ulp1_5::simulation: Max loan amount limits (WETH) config_max_weth=1.0 dynamic_max_weth="1.0000"
-2025-05-17T05:52:08.051193Z  INFO find_optimal_loan_amount{route=RouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x207addb05c548f262219f6b50eadff8640ed6488, buy_dex_type: UniswapV3, sell_dex_type: VelodromeV2, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: None, buy_pool_stable: None, sell_pool_stable: Some(true), buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x25cbddb98b35ab1ff795324516342fac4845718f, zero_for_one_a: true, estimated_profit_usd: 1.0 }}: ulp1_5::simulation: Starting optimal loan search... search_range_weth="0.1000 - 1.0000" iterations=1
-2025-05-17T05:52:15.527317Z  WARN ulp1_5::simulation: LOCAL SIMULATION: Attempting VelodromeV2 simulate_swap with IMPL address (0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858) due to Anvil proxy issues.
-2025-05-17T05:52:16.448882Z  WARN ulp1_5::simulation: LOCAL SIMULATION FALLBACK: Velodrome IMPL call reverted with PairDoesNotExist. Estimating output.
-2025-05-17T05:52:16.449185Z  WARN ulp1_5::simulation: Using ESTIMATED output for local sim due to IMPL call revert/failure. amount_in=1366610382 simulated_out=682621
-2025-05-17T05:52:16.450159Z  INFO find_optimal_loan_amount{route=RouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x207addb05c548f262219f6b50eadff8640ed6488, buy_dex_type: UniswapV3, sell_dex_type: VelodromeV2, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: None, buy_pool_stable: None, sell_pool_stable: Some(true), buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x25cbddb98b35ab1ff795324516342fac4845718f, zero_for_one_a: true, estimated_profit_usd: 1.0 }}: ulp1_5::simulation: No profitable loan amount found within the search range.
-2025-05-17T05:52:16.450417Z  WARN find_optimal_loan_amount{route=RouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x207addb05c548f262219f6b50eadff8640ed6488, buy_dex_type: UniswapV3, sell_dex_type: VelodromeV2, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: None, buy_pool_stable: None, sell_pool_stable: Some(true), buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x25cbddb98b35ab1ff795324516342fac4845718f, zero_for_one_a: true, estimated_profit_usd: 1.0 }}: ulp1_5::simulation: LOCAL SIMULATION: No real profit found. Forcing a small positive profit to test submission flow.
-2025-05-17T05:52:16.450561Z  INFO find_optimal_loan_amount{route=RouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x207addb05c548f262219f6b50eadff8640ed6488, buy_dex_type: UniswapV3, sell_dex_type: VelodromeV2, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: None, buy_pool_stable: None, sell_pool_stable: Some(true), buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x25cbddb98b35ab1ff795324516342fac4845718f, zero_for_one_a: true, estimated_profit_usd: 1.0 }}: ulp1_5::simulation: Injecting fake profit for local test. forced_loan_wei=550000000000000060 forced_profit_wei=10000
-2025-05-17T05:52:16.451185Z  INFO integration_test: [test_full_arbitrage_cycle_simulation_univ3_velo] Optimal loan search complete. Optimal Loan (WETH): 0.550000000000000060, Max Net Profit (WETH): 0.000000000000010000
-2025-05-17T05:52:16.451367Z  INFO integration_test: [test_full_arbitrage_cycle_simulation_univ3_velo] Profitable UniV3->VeloV2 opportunity found/simulated. Attempting submission.
-2025-05-17T05:52:16.451812Z  INFO submit_arbitrage_transaction{buy_pool=0x8514…08ef sell_pool=0x207a…6488 loan_eth=0.550000000000000060 sim_profit_wei=10000}: ulp1_5::transaction: Attempting submission & monitoring
-2025-05-17T05:52:16.552384Z  INFO submit_arbitrage_transaction{buy_pool=0x8514…08ef sell_pool=0x207a…6488 loan_eth=0.550000000000000060 sim_profit_wei=10000}: ulp1_5::transaction: Calculated minimum profit threshold for Huff contract. threshold_wei=1
-2025-05-17T05:52:16.759441Z  WARN submit_arbitrage_transaction{buy_pool=0x8514…08ef sell_pool=0x207a…6488 loan_eth=0.550000000000000060 sim_profit_wei=10000}:get_next_nonce{wallet=0xf39f…2266}: ulp1_5::transaction: Nonce cache empty, fetching from network (pending)...
-2025-05-17T05:52:16.762843Z  INFO submit_arbitrage_transaction{buy_pool=0x8514…08ef sell_pool=0x207a…6488 loan_eth=0.550000000000000060 sim_profit_wei=10000}:get_next_nonce{wallet=0xf39f…2266}: ulp1_5::transaction: Fetched initial/reset nonce. fetched_nonce=324
-2025-05-17T05:52:16.765015Z  INFO submit_arbitrage_transaction{buy_pool=0x8514…08ef sell_pool=0x207a…6488 loan_eth=0.550000000000000060 sim_profit_wei=10000}: ulp1_5::transaction: Constructed Tx Request nonce=324 gas_limit=500000 max_fee=3000028746 max_prio=10000000 min_profit_req_wei=1
-2025-05-17T05:52:16.779344Z  INFO submit_arbitrage_transaction{buy_pool=0x8514…08ef sell_pool=0x207a…6488 loan_eth=0.550000000000000060 sim_profit_wei=10000}: ulp1_5::transaction: Attempting submission via Public RPC...
-2025-05-17T05:52:16.786665Z  INFO submit_arbitrage_transaction{buy_pool=0x8514…08ef sell_pool=0x207a…6488 loan_eth=0.550000000000000060 sim_profit_wei=10000}: ulp1_5::transaction: Submitted via Public RPC. tx_hash=0x860a…0843
-2025-05-17T05:52:16.787473Z  INFO submit_arbitrage_transaction{buy_pool=0x8514…08ef sell_pool=0x207a…6488 loan_eth=0.550000000000000060 sim_profit_wei=10000 tx_hash=0x860ade1918ff73c4ae208ec97abb6c0a62477f44aeeb27692ded5cdf08840843}: ulp1_5::transaction: Transaction submitted successfully. hash=0x860a…0843
-2025-05-17T05:52:16.787822Z  INFO submit_arbitrage_transaction{buy_pool=0x8514…08ef sell_pool=0x207a…6488 loan_eth=0.550000000000000060 sim_profit_wei=10000 tx_hash=0x860ade1918ff73c4ae208ec97abb6c0a62477f44aeeb27692ded5cdf08840843}: ulp1_5::transaction: Monitoring transaction confirmation (Polling every 5000ms, Timeout: 90s)... submitted_tx_hash=0x860a…0843
-2025-05-17T05:52:16.797007Z  INFO submit_arbitrage_transaction{buy_pool=0x8514…08ef sell_pool=0x207a…6488 loan_eth=0.550000000000000060 sim_profit_wei=10000 tx_hash=0x860ade1918ff73c4ae208ec97abb6c0a62477f44aeeb27692ded5cdf08840843}: ulp1_5::transaction: ALERT: ✅✅✅ Tx Confirmed & Succeeded! tx_hash=0x860a…0843 block=135930936 gas_used
-=24112 gas_cost_eth=0.000000241423497744 route=RouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x207addb05c548f262219f6b50eadff8640ed6488, buy_dex_type: UniswapV3, sell_dex_type: VelodromeV2, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: None, buy_pool_stable: None, sell_pool_stable: Some(true), buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x25cbddb98b35ab1ff795324516342fac4845718f, zero_for_one_a: true, estimated_profit_usd: 1.0 }
-2025-05-17T05:52:16.798214Z  INFO integration_test: [test_full_arbitrage_cycle_simulation_univ3_velo] UniV3->VeloV2 arbitrage transaction submission successful. TxHash: 0x860ade1918ff73c4ae208ec97abb6c0a62477f44aeeb27692ded5cdf08840843
-2025-05-17T05:52:16.802713Z  INFO integration_test: [test_full_arbitrage_cycle_simulation_univ3_velo] Tx receipt: TransactionReceipt { transaction_hash: 0x860ade1918ff73c4ae208ec97abb6c0a62477f44aeeb27692ded5cdf08840843, transaction_index: 0, block_hash: Some(0xcfd6cc331f3c1e3e34d893bb219d992f56c2765e00562ec080d655ebc1e97806), block_number: Some(135930936), from: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266, to: Some(0xba12222222228d8ba445958a75a0704d566bf2c9), cumulative_gas_used: 24112, gas_used: Some(24112), contract_address: None, logs: [], status: Some(1), root: None, logs_bloom: 0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000, transaction_type: Some(2), effective_gas_price: Some(10012587), other: OtherFields { inner: {"blobGasPrice": String("0x1")} } }
-2025-05-17T05:52:16.803436Z  INFO integration_test: [test_full_arbitrage_cycle_simulation_univ3_velo] Test logic completed successfully.
-ok
-test test_full_univ3_arbitrage_cycle_simulation ... 2025-05-17T05:52:16.808138Z  INFO integration_test: 🧪 Setting up test suite with Anvil...
-2025-05-17T05:52:16.808748Z  INFO sim_setup: ulp1_5::local_simulator: Setting up simulation environment...
-2025-05-17T05:52:16.846330Z  INFO sim_setup: ulp1_5::local_simulator: Connected to Anvil (Chain ID: 10, Wallet: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266)
-2025-05-17T05:52:16.846654Z  INFO sim_setup: ulp1_5::local_simulator: Deploying Executor contract via Anvil...
-2025-05-17T05:52:24.129946Z  INFO sim_setup: ulp1_5::local_simulator: ✅ Executor deployed to Anvil at: 0xd30bf3219a0416602be8d482e0396ef332b0494e
-2025-05-17T05:52:31.367524Z  INFO integration_test: ✅ MinimalSwapEmitter deployed (or was already present) at: 0xc32609c91d6b6b51d48f2611308fef121b02041f
-2025-05-17T05:52:31.367656Z  INFO integration_test: ✅ Anvil Test Suite Setup Complete (or attempted).
-2025-05-17T05:52:31.367719Z  INFO ulp1_5::config: Loading configuration...
-2025-05-17T05:52:31.371424Z  INFO ulp1_5::config: ✅ Config loaded.
-2025-05-17T05:52:31.371564Z  INFO fetch_and_cache_pool_state{pool=0x8514…08ef dex=UniswapV3}: ulp1_5::state: Fetching state...
-2025-05-17T05:52:31.373842Z  WARN fetch_and_cache_pool_state{pool=0x8514…08ef dex=UniswapV3}: ulp1_5::state: LOCAL SIMULATION: Direct UniV3 pool calls failed for 0x8514…08ef. Using fallback with hardcoded/default values.
-2025-05-17T05:52:31.373933Z  WARN fetch_and_cache_pool_state{pool=0x8514…08ef dex=UniswapV3}: ulp1_5::state: Using placeholder sqrtP=33762070975509198366879000000, tick=204000 for local sim fallback for pool 0x8514…08ef
-2025-05-17T05:52:31.374064Z  INFO fetch_and_cache_pool_state{pool=0x8514…08ef dex=UniswapV3}: ulp1_5::state: State fetched successfully for pool 0x8514…08ef.
-2025-05-17T05:52:31.374249Z  INFO integration_test: [test_full_univ3_arbitrage_cycle_simulation] Initial UniV3 state fetched—proceeding to simulation
-2025-05-17T05:52:31.374404Z  INFO find_optimal_loan_amount{route=RouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x851492574065ede975391e141377067943aa08ef, buy_dex_type: UniswapV3, sell_dex_type: UniswapV3, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: Some(500), buy_pool_stable: None, sell_pool_stable: None, buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, zero_for_one_a: true, estimated_profit_usd: 1.0 }}: ulp1_5::simulation: Searching optimal loan amount...
-2025-05-17T05:52:31.374539Z  INFO find_optimal_loan_amount{route=RouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x851492574065ede975391e141377067943aa08ef, buy_dex_type: UniswapV3, sell_dex_type: UniswapV3, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: Some(500), buy_pool_stable: None, sell_pool_stable: None, buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, zero_for_one_a: true, estimated_profit_usd: 1.0 }}: ulp1_5::simulation: Max loan amount 
-limits (WETH) config_max_weth=1.0 dynamic_max_weth="1.0000"
-2025-05-17T05:52:31.374604Z  INFO find_optimal_loan_amount{route=RouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x851492574065ede975391e141377067943aa08ef, buy_dex_type: UniswapV3, sell_dex_type: UniswapV3, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: Some(500), buy_pool_stable: None, sell_pool_stable: None, buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, zero_for_one_a: true, estimated_profit_usd: 1.0 }}: ulp1_5::simulation: Starting optimal loan search... search_range_weth="0.1000 - 1.0000" iterations=1
-2025-05-17T05:52:39.202233Z  INFO find_optimal_loan_amount{route=RouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x851492574065ede975391e141377067943aa08ef, buy_dex_type: UniswapV3, sell_dex_type: UniswapV3, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: Some(500), buy_pool_stable: None, sell_pool_stable: None, buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, zero_for_one_a: true, estimated_profit_usd: 1.0 }}: ulp1_5::simulation: No profitable loan amount found within the search range.
-2025-05-17T05:52:39.202488Z  WARN find_optimal_loan_amount{route=RouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x851492574065ede975391e141377067943aa08ef, buy_dex_type: UniswapV3, sell_dex_type: UniswapV3, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: Some(500), buy_pool_stable: None, sell_pool_stable: None, buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, zero_for_one_a: true, estimated_profit_usd: 1.0 }}: ulp1_5::simulation: LOCAL SIMULATION: No real profit found. Forcing a small positive profit to test submission flow.
-2025-05-17T05:52:39.202645Z  INFO find_optimal_loan_amount{route=RouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x851492574065ede975391e141377067943aa08ef, buy_dex_type: UniswapV3, sell_dex_type: UniswapV3, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: Some(500), buy_pool_stable: None, sell_pool_stable: None, buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, zero_for_one_a: true, estimated_profit_usd: 1.0 }}: ulp1_5::simulation: Injecting fake profit for local test. forced_loan_wei=550000000000000060 forced_profit_wei=10000
-2025-05-17T05:52:39.203321Z  INFO integration_test: [test_full_univ3_arbitrage_cycle_simulation] Simulation returned loan=550000000000000060 profit=10000
-ok
-test test_setup_and_anvil_interactions ... 2025-05-17T05:52:39.208199Z  INFO integration_test: 🧪 Setting up test suite with Anvil...
-2025-05-17T05:52:39.209399Z  INFO sim_setup: ulp1_5::local_simulator: Setting up simulation environment...
-2025-05-17T05:52:39.239791Z  INFO sim_setup: ulp1_5::local_simulator: Connected to Anvil (Chain ID: 10, Wallet: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266)
-2025-05-17T05:52:39.240012Z  INFO sim_setup: ulp1_5::local_simulator: Deploying Executor contract via Anvil...
-2025-05-17T05:52:46.547337Z  INFO sim_setup: ulp1_5::local_simulator: ✅ Executor deployed to Anvil at: 0xad2935e147b61175d5dc3a9e7bda93b0975a43ba
-2025-05-17T05:52:53.858925Z  INFO integration_test: ✅ MinimalSwapEmitter deployed (or was already present) at: 0xc32609c91d6b6b51d48f2611308fef121b02041f
-2025-05-17T05:52:53.858990Z  INFO integration_test: ✅ Anvil Test Suite Setup Complete (or attempted).
-2025-05-17T05:52:53.859014Z  INFO integration_test: [test_setup_and_anvil_interactions] Starting test logic...
-2025-05-17T05:52:53.859569Z  INFO integration_test: [test_setup_and_anvil_interactions] Anvil current block number: 135930940
-2025-05-17T05:52:53.859634Z  INFO integration_test: [test_setup_and_anvil_interactions] Executor deployed at: 0xad2935e147b61175d5dc3a9e7bda93b0975a43ba
-2025-05-17T05:52:53.859655Z  INFO ulp1_5::config: Loading configuration...
-2025-05-17T05:52:53.864104Z  INFO ulp1_5::config: ✅ Config loaded.
-2025-05-17T05:52:53.864689Z  INFO integration_test: [test_setup_and_anvil_interactions] Calling QuoterV2 (0x61ffe014ba17989e743c5f6cb21bf9697530b21e) quoteExactInputSingle with params: QuoteExactInputSingleParams { token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, amount_in: 1000000000000000000, fee: 500, sqrt_price_limit_x96: 0 }
-2025-05-17T05:52:55.982962Z  INFO integration_test: [test_setup_and_anvil_interactions] QuoterV2 call successful. Amount out: 2480254069, SqrtPriceX96After: 3938771866921398405898127, GasEstimate: 214323
-2025-05-17T05:52:55.994810Z  INFO integration_test: [test_setup_and_anvil_interactions] Calling VelodromeRouter IMPL (0xa062ae8a9c5e11aaa026fc2670b0d65ccc8b2858) getAmountsOut with params: amount_in=1000000000000000000, routes=[Route { from: 0x4200000000000000000000000000000000000006, to: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, stable: true, factory: 0x25cbddb98b35ab1ff795324516342fac4845718f }]
-2025-05-17T05:52:56.002329Z ERROR integration_test: [test_setup_and_anvil_interactions] VelodromeRouter IMPL getAmountsOut call FAILED unexpectedly: Revert(Bytes(0x9a73ab46))
-2025-05-17T05:52:56.002869Z  WARN integration_test: [test_setup_and_anvil_interactions] Continuing test despite VelodromeRouter call failure/revert due to known Anvil fork issues.
-2025-05-17T05:52:56.004223Z  INFO integration_test: [test_setup_and_anvil_interactions] Test logic completed successfully.
-ok
-test test_swap_triggers ... 2025-05-17T05:52:56.008830Z  INFO sim_setup: ulp1_5::local_simulator: Setting up simulation environment...
-2025-05-17T05:52:56.026048Z  INFO sim_setup: ulp1_5::local_simulator: Connected to Anvil (Chain ID: 10, Wallet: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266)
-2025-05-17T05:52:56.026444Z  INFO sim_setup: ulp1_5::local_simulator: Deploying Executor contract via Anvil...
-2025-05-17T05:53:03.288685Z  INFO sim_setup: ulp1_5::local_simulator: ✅ Executor deployed to Anvil at: 0x4951a1c579039ebfcba0be33d2cd3a6d30b0f802
-2025-05-17T05:53:03.288769Z  INFO ulp1_5::config: Loading configuration...
-2025-05-17T05:53:03.293351Z  INFO ulp1_5::config: ✅ Config loaded.
-2025-05-17T05:53:03.293566Z  INFO trigger_v3_swap_via_router{token_out_addr=0x7f5c764cbc14f9669b88837ca1490cca17c31607 pool_fee=500 recipient=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 sqrt_price_limit_x96=0 amount_eth_in=0.010000000000000000}: ulp1_5::local_simulator: Triggering V3 swap via SwapRouter: WETH -> 0x7f5c…1607...
-2025-05-17T05:53:03.294441Z  INFO trigger_v3_swap_via_router{token_out_addr=0x7f5c764cbc14f9669b88837ca1490cca17c31607 pool_fee=500 recipient=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 sqrt_price_limit_x96=0 amount_eth_in=0.010000000000000000}: ulp1_5::local_simulator: Depositing 0.010000000000000000 ETH to WETH contract 0x4200…0006...
-2025-05-17T05:53:10.517322Z  INFO trigger_v3_swap_via_router{token_out_addr=0x7f5c764cbc14f9669b88837ca1490cca17c31607 pool_fee=500 recipient=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 sqrt_price_limit_x96=0 amount_eth_in=0.010000000000000000}: ulp1_5::local_simulator: ✅ WETH deposited. Tx: 0x57a2f91e2614b84e78c85c00126a991f7f62ccc9d9
-e4e511c8e7b84a675da314
-2025-05-17T05:53:10.521544Z  INFO trigger_v3_swap_via_router{token_out_addr=0x7f5c764cbc14f9669b88837ca1490cca17c31607 pool_fee=500 recipient=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 sqrt_price_limit_x96=0 amount_eth_in=0.010000000000000000}: ulp1_5::local_simulator: Wallet WETH balance after deposit: 0.010000000000000000
-2025-05-17T05:53:10.522030Z  INFO trigger_v3_swap_via_router{token_out_addr=0x7f5c764cbc14f9669b88837ca1490cca17c31607 pool_fee=500 recipient=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 sqrt_price_limit_x96=0 amount_eth_in=0.010000000000000000}: ulp1_5::local_simulator: Approving SwapRouter 0x68b3…fc45 to spend 0.010000000000000000 WETH from 0xf39f…2266...
-2025-05-17T05:53:17.737250Z  INFO trigger_v3_swap_via_router{token_out_addr=0x7f5c764cbc14f9669b88837ca1490cca17c31607 pool_fee=500 recipient=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 sqrt_price_limit_x96=0 amount_eth_in=0.010000000000000000}: ulp1_5::local_simulator: ✅ WETH approved for SwapRouter. Tx: 0xdfdb580264b5d7559ca75f6d0f1c
-fe9b56c1e3498e6c39b0bb0d30d93e126356
-2025-05-17T05:53:17.740913Z  INFO trigger_v3_swap_via_router{token_out_addr=0x7f5c764cbc14f9669b88837ca1490cca17c31607 pool_fee=500 recipient=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 sqrt_price_limit_x96=0 amount_eth_in=0.010000000000000000}: ulp1_5::local_simulator: Router WETH allowance after approval: 0.010000000000000000        
-2025-05-17T05:53:17.746622Z  INFO trigger_v3_swap_via_router{token_out_addr=0x7f5c764cbc14f9669b88837ca1490cca17c31607 pool_fee=500 recipient=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 sqrt_price_limit_x96=0 amount_eth_in=0.010000000000000000}: ulp1_5::local_simulator: Preparing to call SwapRouter.exactInputSingle with params: ExactInputSingleParams { token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, fee: 500, recipient: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266, deadline: 1747461788, amount_in: 10000000000000000, amount_out_minimum: 0, sqrt_price_limit_x96: 0 }
-2025-05-17T05:53:18.068074Z  WARN trigger_v3_swap_via_router{token_out_addr=0x7f5c764cbc14f9669b88837ca1490cca17c31607 pool_fee=500 recipient=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 sqrt_price_limit_x96=0 amount_eth_in=0.010000000000000000}: ulp1_5::local_simulator: ⚠️ SwapRouter.exactInputSingle CALL failed (simulated): Revert(Byt
-es(0x))
-2025-05-17T05:53:18.068383Z  WARN trigger_v3_swap_via_router{token_out_addr=0x7f5c764cbc14f9669b88837ca1490cca17c31607 pool_fee=500 recipient=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 sqrt_price_limit_x96=0 amount_eth_in=0.010000000000000000}: ulp1_5::local_simulator:    Raw revert data: 0x
-2025-05-17T05:53:18.068802Z  INFO trigger_v3_swap_via_router{token_out_addr=0x7f5c764cbc14f9669b88837ca1490cca17c31607 pool_fee=500 recipient=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 sqrt_price_limit_x96=0 amount_eth_in=0.010000000000000000}: ulp1_5::local_simulator: Attempting SwapRouter.exactInputSingle with gas limit: 800000     
-2025-05-17T05:53:25.106057Z  INFO trigger_v3_swap_via_router{token_out_addr=0x7f5c764cbc14f9669b88837ca1490cca17c31607 pool_fee=500 recipient=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 sqrt_price_limit_x96=0 amount_eth_in=0.010000000000000000}: ulp1_5::local_simulator: ✅ SwapRouter.exactInputSingle transaction sent and confirmed. Tx: 
-0x3627d086619a10ccbfdea9799308cafc178acfb4a218d73f643ef816f8338999
-ok
-
-test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 116.79s
-
-     Running tests/ws_event_loop_test.rs (target/debug/deps/ws_event_loop_test-c5d94d01716f9137)
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
-
-   Doc-tests ulp1_5
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-
-🛑 Shutting down anvil (pid 18730)…
-ntjson@LAPTOP-74NQ7BNG:/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5$
+🛑 Shutting down anvil (pid 2200)…
+ntjson@LAPTOP-74NQ7BNG:/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5$ 

@@ -247,3 +247,22 @@ Hit all six and you’re safe to fund the prod key and flip `DRY_RUN=0`.
 
 That pipeline costs **$0 for CI**, \<$0.01 per nightly Spot fork, and about 20 minutes wall‑clock, yet exercises 95 % of production failure modes before real capital is at risk.
 
+## WebSocket Configuration
+Use a WebSocket provider for real-time event subscriptions:
+```bash
+export WS_RPC_URL="wss://optimism-mainnet.infura.io/ws/v3/<PROJECT_ID>"
+```
+In `config.rs`, read `WS_RPC_URL` from env and initialize:
+```rust
+let ws_provider = Provider::connect(ws_rpc_url).await?;
+```
+
+## Testnet Dry Run Configuration
+For Optimism Goerli testing, set:
+```bash
+export HTTP_RPC_URL="https://goerli.optimism.io"
+export WS_RPC_URL="wss://goerli.optimism.io/ws"
+export CHAIN_ID=420
+```
+Ensure `.env` reflects these values and use `--features local_simulation` in tests.
+
