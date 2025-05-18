@@ -9,13 +9,14 @@ use lazy_static::lazy_static;
 // Re-export modules needed by integration tests and potentially the binary
 pub mod bindings;
 pub mod config;
-pub mod deploy;
-pub mod encoding;
+pub mod state;            // ← newly declared
 pub mod event_handler;
 pub mod path_optimizer;
 pub mod simulation;
 pub mod transaction;
 pub mod gas;
+pub mod encoding;
+pub mod deploy;
 pub mod utils;
 
 // Public types/constants re-exported for convenience
@@ -27,7 +28,7 @@ pub use transaction::NonceManager; // Re-export NonceManager
 
 // expose WS test runner from event_handler
 #[cfg(feature = "local_simulation")]
-pub use event_handler::run_event_loop_ws_test;
+pub use event_loop::run_event_loop_ws_test;
 
 // Define lazy_static within the lib so they are accessible via the library.
 lazy_static! {

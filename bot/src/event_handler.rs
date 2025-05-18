@@ -23,12 +23,11 @@ use ethers::{
     contract::{EthLogDecode, ContractCall}, 
     prelude::*,
     types::{Log, U64, I256, U256, Address},
-    providers::{Provider, Ws, Middleware},
+    providers::Provider,
 };
 use eyre::{Result};
 use std::{sync::Arc, time::Duration};
 use tokio::time::timeout;
-use futures_util::StreamExt;
 use tracing::{debug, error, info, instrument, trace, warn};
 
 
@@ -297,7 +296,7 @@ pub async fn check_for_arbitrage(
                  sim_state.clone(),
                  &route, 
                  buy_snapshot_option.as_ref(),
-                 sellSnapshotOption.as_ref(),
+                 sell_snapshot_option.as_ref(),
                  current_gas_price_gwei,
              ).await;
 

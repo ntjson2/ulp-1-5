@@ -1,26 +1,4 @@
-Welcome to Ubuntu 20.04.2 LTS (GNU/Linux 5.15.167.4-microsoft-standard-WSL2 x86_64)
-
- * Documentation:  https://help.ubuntu.com
- * Management:     https://landscape.canonical.com
- * Support:        https://ubuntu.com/advantage
-
-  System information as of Sun May 18 00:12:29 MDT 2025
-
-  System load:  0.08                Processes:             15
-  Usage of /:   0.6% of 1006.85GB   Users logged in:       0
-  Memory usage: 4%                  IPv4 address for eth0: 172.26.36.205
-  Swap usage:   0%
-
-
-316 updates can be installed immediately.
-224 of these updates are security updates.
-To see these additional updates run: apt list --upgradable
-
-
-
-This message is shown once a day. To disable it please create the
-/home/ntjson/.hushlogin file.
-ntjson@LAPTOP-74NQ7BNG:/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5$ ./run_me.sh
+^[[Antjson@LAPTOP-74NQ7BNG:/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5$ ./run_me.sh
 🔌 Spawning anvil …
 ⏳ Waiting for Anvil RPC at http://127.0.0.1:8545...
 ✅ Anvil is ready.
@@ -28,83 +6,26 @@ ntjson@LAPTOP-74NQ7BNG:/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE
 ✅ ArbitrageExecutor deployed to 0x8e45c0936fa1a65bdad3222befec6a03c83372ce
 🧪 Running integration tests …
    Compiling ulp1_5 v0.1.0 (/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5)
-warning: unused import: `std::time::Duration`
- --> bot/src/event_loop.rs:2:5
-  |
-2 | use std::time::Duration;
-  |     ^^^^^^^^^^^^^^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` on by default
-
-warning: unused import: `tokio::time::timeout`
- --> bot/src/event_loop.rs:3:5
-  |
-3 | use tokio::time::timeout;
-  |     ^^^^^^^^^^^^^^^^^^^^
-
-warning: function `run_event_loop_ws_test` is never used
- --> bot/src/event_loop.rs:5:14
-  |
-5 | pub async fn run_event_loop_ws_test(
-  |              ^^^^^^^^^^^^^^^^^^^^^^
-  |
-  = note: `#[warn(dead_code)]` on by default
-
-warning: `ulp1_5` (lib) generated 3 warnings (1 duplicate) (run `cargo fix --lib -p ulp1_5` to apply 2 suggestions)
-warning: unused import: `super::*`
-  --> tests/ws_event_loop_test.rs:83:9
+error[E0432]: unresolved import `event_handler::run_event_loop_ws_test`
+  --> bot/src/lib.rs:31:9
    |
-83 |     use super::*;
-   |         ^^^^^^^^
+31 | pub use event_handler::run_event_loop_ws_test;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `run_event_loop_ws_test` in `event_handler`
+
+warning: unused import: `futures_util::StreamExt`
+  --> bot/src/event_handler.rs:31:5
+   |
+31 | use futures_util::StreamExt;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
    |
    = note: `#[warn(unused_imports)]` on by default
 
-error[E0061]: this function takes 2 arguments but 3 arguments were supplied
-   --> tests/ws_event_loop_test.rs:93:25
-    |
-93  |         let triggered = run_event_loop_ws_test(ws_url, http_url, minimal_emitter).await?;
-    |                         ^^^^^^^^^^^^^^^^^^^^^^                   --------------- unexpected argument #3 of type `&str`
-    |
-note: expected `Arc<AppState>`, found `&str`
-   --> tests/ws_event_loop_test.rs:93:48
-    |
-93  |         let triggered = run_event_loop_ws_test(ws_url, http_url, minimal_emitter).await?;
-    |                                                ^^^^^^
-    = note: expected struct `Arc<AppState>`
-            found reference `&str`
-note: function defined here
-   --> /mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5/bot/src/event_handler.rs:344:14
-    |
-344 | pub async fn run_event_loop_ws_test(
-    |              ^^^^^^^^^^^^^^^^^^^^^^
-help: remove the extra argument
-    |
-93  -         let triggered = run_event_loop_ws_test(ws_url, http_url, minimal_emitter).await?;
-93  +         let triggered = run_event_loop_ws_test(/* Arc<AppState> */, http_url).await?;
-    |
-
-error[E0600]: cannot apply unary operator `!` to type `()`
-  --> tests/ws_event_loop_test.rs:94:9
-   |
-94 |         assert!(triggered, "WS loop did not detect arbitrage trigger");
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot apply unary operator `!`
-   |
-   = note: this error originates in the macro `assert` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0433]: failed to resolve: use of unresolved module or unlinked crate `anyhow`
-  --> tests/ws_event_loop_test.rs:88:57
-   |
-88 |     async fn test_ws_event_loop_triggers_arbitrage() -> anyhow::Result<()> {
-   |                                                         ^^^^^^ use of unresolved module or unlinked crate `anyhow`
-   |
-   = help: if you wanted to use a crate named `anyhow`, use `cargo add anyhow` to add it to your `Cargo.toml`
-
-Some errors have detailed explanations: E0061, E0433, E0600.
-For more information about an error, try `rustc --explain E0061`.
-warning: `ulp1_5` (test "ws_event_loop_test") generated 1 warning
-error: could not compile `ulp1_5` (test "ws_event_loop_test") due to 3 previous errors; 1 warning emitted
+For more information about this error, try `rustc --explain E0432`.
+warning: `ulp1_5` (lib test) generated 1 warning
+error: could not compile `ulp1_5` (lib test) due to 1 previous error; 1 warning emitted
 warning: build failed, waiting for other jobs to finish...
-warning: `ulp1_5` (lib test) generated 3 warnings (2 duplicates)
+warning: `ulp1_5` (lib) generated 1 warning (1 duplicate)
+error: could not compile `ulp1_5` (lib) due to 1 previous error; 1 warning emitted
 
-🛑 Shutting down anvil (pid 2200)…
+🛑 Shutting down anvil (pid 890)…
 ntjson@LAPTOP-74NQ7BNG:/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5$ 
