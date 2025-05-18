@@ -58,7 +58,7 @@ export ARBITRAGE_EXECUTOR_ADDRESS="${DEPLOY_ADDR}"
 # Optional: trim the optimiser search space for faster CI runs
 export OPTIMAL_LOAN_SEARCH_ITERATIONS=1
 export MAX_LOAN_AMOUNT_WETH=1
-
+ 
 # ----------------------------------------------------------------------------------
 # 3. Run ignored integration tests single‑threaded
 # ----------------------------------------------------------------------------------

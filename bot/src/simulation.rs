@@ -13,27 +13,32 @@ use crate::gas::estimate_flash_loan_gas;
 use crate::state::{AppState, DexType, PoolSnapshot};
 use crate::path_optimizer::RouteCandidate;
 use crate::utils::{f64_to_wei, ToF64Lossy};
+use eyre::eyre;
 use ethers::{
+    core::types::{Address, U256, I256, Selector},
+    providers::{Provider, Http},
     contract::ContractError,
-    prelude::{Http, LocalWallet, Provider, SignerMiddleware},
-    types::{Address, I256, U256, Selector}, // Removed unused Bytes
-    utils::{format_units, parse_units},
+    middleware::SignerMiddleware,
+    signers::LocalWallet,
+    utils::{parse_units, format_units},
 };
-use eyre::{eyre, Result, WrapErr};
-use hex;
-use std::sync::Arc;
+use std::{sync::Arc, str::FromStr};
 use tokio::time::{timeout, Duration};
 use tracing::{debug, error, info, instrument, trace, warn};
-use std::str::FromStr;
 
-// Configuration Constants for Simulation
-const V2_RESERVE_PERCENTAGE_LIMIT: u64 = 5;
+pub const V2_RESERVE_PERCENTAGE_LIMIT: u8 = 50;
 
-#[cfg(feature = "local_simulation")]
-const VELO_ROUTER_IMPL_ADDR_FOR_SIM: &str = "0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858";
-#[cfg(feature = "local_simulation")]
-const PAIR_DOES_NOT_EXIST_SELECTOR_STR: &str = "9a73ab46";
+pub struct SimulationConfig {
+    pub anvil_ws_url: &'static str,
+    pub http_url: &'static str,
+    pub minimal_emitter: &'static str,
+}
 
+pub const SIMULATION_CONFIG: SimulationConfig = SimulationConfig {
+    anvil_ws_url: "ws://127.0.0.1:8545/ws",
+    http_url: "http://127.0.0.1:8545",
+    minimal_emitter: "0x0000000000000000000000000000000000000000",
+};
 
 /// Simulates a single swap on a DEX using appropriate on-chain query methods.
 // (Function remains unchanged)

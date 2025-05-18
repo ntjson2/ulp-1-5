@@ -64,4 +64,10 @@ pub async fn estimate_flash_loan_gas(
     debug!(estimated_gas = %estimated_gas_units, "Gas estimation successful");
     Ok(estimated_gas_units)
 }
+
+use ethers::types::U256;
+
+pub fn estimate_flash_loan_gas() -> U256 {
+    U256::zero()
+}
 // END OF FILE: bot/src/gas.rs

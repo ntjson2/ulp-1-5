@@ -69,4 +69,8 @@ pub fn encode_user_data(
     .map(Bytes::from)
 }
 
+pub fn encode_user_data() -> Vec<u8> {
+    Vec::new()
+}
+
 // END OF FILE: bot/src/encoding.rs

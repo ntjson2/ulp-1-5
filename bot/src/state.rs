@@ -7,10 +7,12 @@ use crate::transaction::NonceManager;
 use dashmap::DashMap;
 use ethers::{
     prelude::*,
+    providers::{Provider, Http},
     types::{Address, U256, U64},
     utils::parse_units,
 };
-use eyre::{eyre, Result};
+use eyre::eyre;
+use eyre::{Result};
 use std::{str::FromStr, sync::Arc};
 #[cfg(feature = "local_simulation")]
 use tokio::sync::Mutex;
@@ -88,6 +90,9 @@ pub struct AppState {
     pub client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
     /// Nonce manager for transaction sequencing
     pub nonce_manager: Arc<NonceManager>,
+    pub http_client: Provider<Http>,
+    pub executor_address: Option<Address>,
+    pub wallet_address: Address,
 }
 
 impl AppState {
@@ -110,6 +115,9 @@ impl AppState {
             pool_snapshots: Default::default(),
             #[cfg(feature = "local_simulation")]
             test_arb_check_triggered: None,
+            http_client,
+            executor_address: None,
+            wallet_address: config.wallet_address,
         }
     }
     pub fn target_pair(&self) -> Option<(Address, Address)> {
@@ -268,7 +276,20 @@ pub async fn fetch_and_cache_pool_state(
                     }
                     #[cfg(not(feature = "local_simulation"))]
                     {
-                         let (rsv0, rsv1, _) = if dex_type == DexType::VelodromeV2 { VelodromeV2Pool::new(pool_addr, client.clone()).get_reserves().call().await.map_err(|e| eyre!(e))? } else { AerodromePool::new(pool_addr, client.clone()).get_reserves().call().await.map_err(|e| eyre!(e))? };
+                         // sample pool-reserves call
+    let (rsv0, rsv1, _) = if dex_type == DexType::VelodromeV2 {
+        VelodromeV2Pool::new(pool_addr, client.clone())
+            .get_reserves()
+            .call()
+            .await
+            .map_err(|e| eyre!(e))?
+    } else {
+        AerodromePool::new(pool_addr, client.clone())
+            .get_reserves()
+            .call()
+            .await
+            .map_err(|e| eyre!(e))?
+    };
                          r0 = rsv0; r1 = rsv1;
                          sleep(call_delay).await;
                          t0 = if dex_type == DexType::VelodromeV2 { VelodromeV2Pool::new(pool_addr, client.clone()).token_0().call().await.map_err(|e| eyre!(e))? } else { AerodromePool::new(pool_addr, client.clone()).token_0().call().await.map_err(|e| eyre!(e))? };

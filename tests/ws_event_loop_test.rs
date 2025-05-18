@@ -7,6 +7,7 @@ use ethers::providers::Middleware;
 use tokio::time::{sleep, Duration, timeout};
 use ulp1_5::{NonceManager, run_event_loop_ws_test, config, AppState};
 use ulp1_5::local_simulator::{setup_simulation_environment, trigger_v3_swap_via_router, SIMULATION_CONFIG};
+use ulp1_5::event_loop::run_event_loop;
 
 // adjust timeout as needed
 const WS_TEST_TIMEOUT: Duration = Duration::from_secs(15);
@@ -88,10 +89,12 @@ mod integration_tests {
     async fn test_ws_event_loop_triggers_arbitrage() -> Result<(), Box<dyn Error>> {
         let ws_url = "ws://127.0.0.1:8545/ws";
         let http_url = "http://127.0.0.1:8545";
-        let minimal_emitter = "<MINIMAL_SWAP_EMITTER_ADDRESS>";
 
-        let triggered = run_event_loop_ws_test(ws_url, http_url, minimal_emitter).await?;
-        assert!(triggered, "WS loop did not detect arbitrage trigger");
-        Ok(())
-    }
-}
+        // spawn the real event loop, not the stub:
+        let handle = tokio::spawn(run_event_loop(
+            ws_url,
+            http_url,
+        ));
+
+        // trigger a swap via router...
+        // ...

@@ -1,13 +1,8 @@
-use ethers::providers::{Provider, Ws};
-use std::error::Error;
-
+/// Test‐only WS loop entrypoint: takes WS URL and HTTP URL.
 pub async fn run_event_loop_ws_test(
     ws_url: &str,
-    _http_url: &str,
-    _pool_address: &str,
-) -> Result<bool, Box<dyn Error>> {
-    // connect via WebSocket
-    let _ws = Provider::<Ws>::connect(ws_url).await?;
-    // TODO: initialize AppState, subscribe to Swap events, trigger a swap, check a flag
-    Ok(false)
+    http_url: &str,
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    // TODO: implement actual test loop
+    unimplemented!()
 }
