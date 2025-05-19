@@ -174,3 +174,45 @@ pub fn load_config() -> Result<Config> {
     };
     info!("✅ Config loaded."); debug!(?config); Ok(config)
 }
+
+impl Default for Config {
+    fn default() -> Self {
+        // stub defaults; adjust as needed
+        Self {
+            ws_rpc_url: String::new(),
+            http_rpc_url: String::new(),
+            local_private_key: String::new(),
+            chain_id: None,
+            arb_executor_address: None,
+            uniswap_v3_factory_addr: Address::zero(),
+            velodrome_v2_factory_addr: Address::zero(),
+            balancer_vault_address: Address::zero(),
+            quoter_v2_address: Address::zero(),
+            velo_router_addr: Address::zero(),
+            aerodrome_factory_addr: None,
+            aerodrome_router_addr: None,
+            weth_address: Address::zero(),
+            usdc_address: Address::zero(),
+            weth_decimals: 18,
+            usdc_decimals: 6,
+            deploy_executor: false,
+            executor_bytecode_path: String::new(),
+            min_loan_amount_weth: 0.0,
+            max_loan_amount_weth: 0.0,
+            optimal_loan_search_iterations: 1,
+            fetch_timeout_secs: None,
+            enable_univ3_dynamic_sizing: false,
+            max_priority_fee_per_gas_gwei: 0.01,
+            fallback_gas_price_gwei: None,
+            gas_limit_buffer_percentage: 25,
+            min_flashloan_gas_limit: 400_000,
+            private_rpc_url: None,
+            secondary_private_rpc_url: None,
+            min_profit_buffer_bps: 10,
+            min_profit_abs_buffer_wei_str: "5000000000000".to_string(),
+            critical_block_lag_seconds: 300,
+            critical_log_lag_seconds: 300,
+            dry_run: false,
+        }
+    }
+}

@@ -1,4 +1,3 @@
-ntjson@LAPTOP-74NQ7BNG:/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5$ ./run_me.sh
 🔌 Spawning anvil …
 ⏳ Waiting for Anvil RPC at http://127.0.0.1:8545...
 ✅ Anvil is ready.
@@ -6,239 +5,439 @@ ntjson@LAPTOP-74NQ7BNG:/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE
 ✅ ArbitrageExecutor deployed to 0x8e45c0936fa1a65bdad3222befec6a03c83372ce
 🧪 Running integration tests …
    Compiling ulp1_5 v0.1.0 (/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5)
-error[E0252]: the name `AppState` is defined multiple times
-  --> bot/src/lib.rs:31:17
+error: attempting to skip non-existent parameter
+  --> bot/src/path_optimizer.rs:41:76
    |
-17 | pub use state::AppState;
-   |         --------------- previous import of the type `AppState` here
+41 | #[tracing::instrument(level="trace", skip(snapshot, state_context, config, app_state), fields(pool=%snapshot.pool_address, dex=?snapshot....
+   |                                                                            ^^^^^^^^^
+
+error[E0432]: unresolved import `crate::bindings::VelodromeV2Pair`
+  --> bot/src/simulation.rs:10:5
+   |
+10 |     VelodromeV2Pair as VelodromePair, 
+   |     ---------------^^^^^^^^^^^^^^^^^
+   |     |
+   |     no `VelodromeV2Pair` in `bindings`
+   |     help: a similar name exists in the module: `VelodromeV2Pool`
+
+error[E0432]: unresolved import `crate::bindings::i_uniswap_v3_pool`
+  --> bot/src/state.rs:12:9
+   |
+12 |         i_uniswap_v3_pool::Slot0Output, // Trying this path
+   |         ^^^^^^^^^^^^^^^^^ could not find `i_uniswap_v3_pool` in `bindings`
+
+error[E0433]: failed to resolve: could not find `price_math` in `uniswap_v3_math`
+  --> bot/src/path_optimizer.rs:63:30
+   |
+63 |             uniswap_v3_math::price_math::sqrt_price_x96_to_price(sqrt_price, dec0.into(), dec1.into())?
+   |                              ^^^^^^^^^^ could not find `price_math` in `uniswap_v3_math`
+
+error[E0433]: failed to resolve: could not find `price_math` in `uniswap_v3_math`
+   --> bot/src/path_optimizer.rs:219:22
+    |
+219 |     uniswap_v3_math::price_math::sqrt_price_x96_to_price(sqrt_price, dec0.into(), dec1.into())
+    |                      ^^^^^^^^^^ could not find `price_math` in `uniswap_v3_math`
+
+warning: unused imports: `ContractError` and `Selector`
+  --> bot/src/simulation.rs:18:40
+   |
+18 |     core::types::{Address, U256, I256, Selector}, 
+   |                                        ^^^^^^^^
 ...
-31 | pub use state::{AppState, DexType, PoolSnapshot, PoolState}; // Re-export key types
-   |                 ^^^^^^^^--
-   |                 |
-   |                 `AppState` reimported here
-   |                 help: remove unnecessary import
-   |
-   = note: `AppState` must be defined only once in the type namespace of this module
-
-error[E0432]: unresolved import `crate::transaction`
- --> bot/src/state.rs:6:12
-  |
-6 | use crate::transaction::NonceManager;
-  |            ^^^^^^^^^^^
-  |            |
-  |            unresolved import
-  |            help: a similar path exists: `ethers::types::transaction`
-
-error[E0432]: unresolved import `crate::gas`
-  --> bot/src/simulation.rs:12:12
-   |
-12 | use crate::gas::estimate_flash_loan_gas;
-   |            ^^^
-   |            |
-   |            unresolved import
-   |            help: a similar path exists: `ethers::prelude::gas`
-
-error[E0432]: unresolved import `crate::path_optimizer`
-  --> bot/src/simulation.rs:14:12
-   |
-14 | use crate::path_optimizer::RouteCandidate;
-   |            ^^^^^^^^^^^^^^ could not find `path_optimizer` in the crate root
-
-error[E0432]: unresolved import `crate::utils`
-  --> bot/src/simulation.rs:15:12
-   |
-15 | use crate::utils::{f64_to_wei, ToF64Lossy};
-   |            ^^^^^
-   |            |
-   |            unresolved import
-   |            help: a similar path exists: `ethers::utils`
-
-error[E0432]: unresolved imports `simulation::setup_simulation_environment`, `simulation::trigger_v3_swap_via_router`, `simulation::VELO_ROUTER_IMPL_ADDR_FOR_SIM`, `simulation::PAIR_DOES_NOT_EXIST_SELECTOR_STR`
-  --> bot/src/lib.rs:24:5
-   |
-24 |     setup_simulation_environment,
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `setup_simulation_environment` in `simulation`
-25 |     trigger_v3_swap_via_router,
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^ no `trigger_v3_swap_via_router` in `simulation`
-26 |     VELO_ROUTER_IMPL_ADDR_FOR_SIM,
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `VELO_ROUTER_IMPL_ADDR_FOR_SIM` in `simulation`
-27 |     PAIR_DOES_NOT_EXIST_SELECTOR_STR,
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `PAIR_DOES_NOT_EXIST_SELECTOR_STR` in `simulation`
-
-error[E0432]: unresolved import `path_optimizer`
-  --> bot/src/lib.rs:32:9
-   |
-32 | pub use path_optimizer::RouteCandidate;
-   |         ^^^^^^^^^^^^^^ use of unresolved module or unlinked crate `path_optimizer`
-   |
-   = help: if you wanted to use a crate named `path_optimizer`, use `cargo add path_optimizer` to add it to your `Cargo.toml`     
-
-error[E0432]: unresolved import `transaction`
-  --> bot/src/lib.rs:33:9
-   |
-33 | pub use transaction::NonceManager; // Re-export NonceManager
-   |         ^^^^^^^^^^^ use of unresolved module or unlinked crate `transaction`
-   |
-   = help: if you wanted to use a crate named `transaction`, use `cargo add transaction` to add it to your `Cargo.toml`
-
-error[E0432]: unresolved import `crate::encoding`
-   --> bot/src/simulation.rs:175:16
-    |
-175 |     use crate::encoding::encode_user_data;
-    |                ^^^^^^^^ could not find `encoding` in the crate root
-
-error[E0425]: cannot find value `http_client` in this scope
-   --> bot/src/state.rs:118:13
-    |
-93  |     pub http_client: Provider<Http>,
-    |         ----------- a field by that name exists in `Self`
-...
-118 |             http_client,
-    |             ^^^^^^^^^^^
-
-error[E0425]: cannot find value `VELO_ROUTER_IMPL_ADDR_FOR_SIM` in this scope
-  --> bot/src/simulation.rs:82:135
-   |
-82 | ...{}) due to Anvil proxy issues.", VELO_ROUTER_IMPL_ADDR_FOR_SIM);
-   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
-   |
-help: consider importing this constant
-   |
-5  + use crate::VELO_ROUTER_IMPL_ADDR_FOR_SIM;
-   |
-
-error[E0425]: cannot find value `VELO_ROUTER_IMPL_ADDR_FOR_SIM` in this scope
-  --> bot/src/simulation.rs:83:63
-   |
-83 |                     router_address_to_use = Address::from_str(VELO_ROUTER_IMPL_ADDR_FOR_SIM)?;
-   |                                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
-   |
-help: consider importing this constant
-   |
-5  + use crate::VELO_ROUTER_IMPL_ADDR_FOR_SIM;
-   |
-
-error[E0425]: cannot find value `PAIR_DOES_NOT_EXIST_SELECTOR_STR` in this scope
-   --> bot/src/simulation.rs:109:58
-    |
-109 |                         let selector_bytes = hex::decode(PAIR_DOES_NOT_EXIST_SELECTOR_STR)?;
-    |                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
-    |
-help: consider importing this constant
-    |
-5   + use crate::PAIR_DOES_NOT_EXIST_SELECTOR_STR;
-    |
-
-warning: unused import: `AppState`
-  --> bot/src/lib.rs:31:17
-   |
-31 | pub use state::{AppState, DexType, PoolSnapshot, PoolState}; // Re-export key types
-   |                 ^^^^^^^^
+22 |     contract::{ContractError}, // Removed EthCall (unused warning)
+   |                ^^^^^^^^^^^^^
    |
    = note: `#[warn(unused_imports)]` on by default
 
-error[E0107]: enum takes 2 generic arguments but 1 generic argument was supplied
-  --> bot/src/simulation.rs:57:6
+warning: unused import: `std::error::Error as StdError`
+  --> bot/src/simulation.rs:29:5
    |
-57 | ) -> Result<U256> {
-   |      ^^^^^^ ---- supplied 1 generic argument
-   |      |
-   |      expected 2 generic arguments
+29 | use std::error::Error as StdError;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0061]: this function takes 1 argument but 8 arguments were supplied
+   --> bot/src/event_handler.rs:274:43
+    |
+274 |     let top_routes: Vec<RouteCandidate> = path_optimizer::find_top_routes(
+    |                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: expected `Arc<AppState>`, found `&PoolSnapshot`
+   --> bot/src/event_handler.rs:275:9
+    |
+275 |         &updated_pool_snapshot,    // Arg 1: &PoolSnapshot
+    |         ^^^^^^^^^^^^^^^^^^^^^^
+    = note: expected struct `Arc<AppState>`
+            found reference `&PoolSnapshot`
+note: function defined here
+   --> bot/src/path_optimizer.rs:95:14
+    |
+95  | pub async fn find_top_routes(
+    |              ^^^^^^^^^^^^^^^
+96  |     app_state: Arc<AppState>,
+    |     ------------------------
+help: remove the extra arguments
+    |
+275 -         &updated_pool_snapshot,    // Arg 1: &PoolSnapshot
+275 +         /* Arc<AppState> */,  // Arg 8: u8
+    |
+
+error[E0308]: mismatched types
+   --> bot/src/event_handler.rs:274:43
+    |
+274 |       let top_routes: Vec<RouteCandidate> = path_optimizer::find_top_routes(
+    |  _____________________-------------------___^
+    | |                     |
+    | |                     expected due to this
+275 | |         &updated_pool_snapshot,    // Arg 1: &PoolSnapshot
+276 | |         &state.pool_states,        // Arg 2: &Arc<DashMap<Address, PoolState>>
+277 | |         &state.pool_snapshots,     // Arg 3: &Arc<DashMap<Address, PoolSnapshot>>
+...   |
+282 | |         config_ref.usdc_decimals,  // Arg 8: u8
+283 | |     );
+    | |_____^ expected `Vec<RouteCandidate>`, found future
+    |
+note: calling an async function returns a future
+   --> bot/src/event_handler.rs:274:43
+    |
+274 |       let top_routes: Vec<RouteCandidate> = path_optimizer::find_top_routes(
+    |  ___________________________________________^
+275 | |         &updated_pool_snapshot,    // Arg 1: &PoolSnapshot
+276 | |         &state.pool_states,        // Arg 2: &Arc<DashMap<Address, PoolState>>
+277 | |         &state.pool_snapshots,     // Arg 3: &Arc<DashMap<Address, PoolSnapshot>>
+...   |
+282 | |         config_ref.usdc_decimals,  // Arg 8: u8
+283 | |     );
+    | |_____^
+help: consider `await`ing on the `Future`
+    |
+283 |     ).await;
+    |      ++++++
+
+error[E0308]: mismatched types
+  --> bot/src/path_optimizer.rs:57:46
    |
-help: add missing generic argument
+57 |     let t0_is_weth = state_context.token0 == Some(weth_address); // state_context.token0 is Option<Address>
+   |                      --------------------    ^^^^^^^^^^^^^^^^^^ expected `H160`, found `Option<H160>`
+   |                      |
+   |                      expected because this is `H160`
    |
-57 | ) -> Result<U256, E> {
-   |                 +++
+   = note: expected struct `H160`
+                found enum `std::option::Option<H160>`
 
-error[E0107]: enum takes 2 generic arguments but 1 generic argument was supplied
-   --> bot/src/simulation.rs:158:6
-    |
-158 | ) -> Result<I256> {
-    |      ^^^^^^ ---- supplied 1 generic argument
-    |      |
-    |      expected 2 generic arguments
-    |
-help: add missing generic argument
-    |
-158 | ) -> Result<I256, E> {
-    |                 +++
+error[E0308]: mismatched types
+  --> bot/src/path_optimizer.rs:76:58
+   |
+76 |     let usdc_per_weth_price = if state_context.token0 == Some(weth_address) { // If token0 is WETH
+   |                                  --------------------    ^^^^^^^^^^^^^^^^^^ expected `H160`, found `Option<H160>`
+   |                                  |
+   |                                  expected because this is `H160`
+   |
+   = note: expected struct `H160`
+                found enum `std::option::Option<H160>`
 
-error[E0107]: enum takes 2 generic arguments but 1 generic argument was supplied
-   --> bot/src/simulation.rs:223:6
+error[E0308]: mismatched types
+   --> bot/src/path_optimizer.rs:110:40
     |
-223 | ) -> Result<Option<(U256, I256)>> {
-    |      ^^^^^^ -------------------- supplied 1 generic argument
-    |      |
-    |      expected 2 generic arguments
+110 |         if !((buy_pool_state.token0 == Some(weth_address) && buy_pool_state.token1 == Some(usdc_address)) ||
+    |               ---------------------    ^^^^^^^^^^^^^^^^^^ expected `H160`, found `Option<H160>`
+    |               |
+    |               expected because this is `H160`
     |
-help: add missing generic argument
-    |
-223 | ) -> Result<Option<(U256, I256)>, E> {
-    |                                 +++
+    = note: expected struct `H160`
+                 found enum `std::option::Option<H160>`
 
-error[E0599]: no method named `wrap_err_with` found for enum `Result` in the current scope
-    --> bot/src/simulation.rs:67:18
-     |
-66   |               let quote_result = quoter.quote_exact_input_single(params).call().await
-     |  ________________________________-
-67   | |                 .wrap_err_with(|| format!("QuoterV2 simulation failed for pair {token_in:?} -> {token_out:?}"))?;        
-     | |_________________-^^^^^^^^^^^^^
-     |
-    ::: /home/ntjson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/eyre-0.6.12/src/lib.rs:1109:8
-     |
-1109 |       fn wrap_err_with<D, F>(self, f: F) -> Result<T, Report>
-     |          ------------- the method is available for `std::result::Result<(ethers::types::U256, ethers::types::U256, u32, ethers::types::U256), ethers::ethers_contract::ContractError<ethers::ethers_middleware::SignerMiddleware<Provider<Http>, Wallet<ecdsa::signing::SigningKey<Secp256k1>>>>>` here
-     |
-     = help: items from traits can only be used if the trait is in scope
-help: trait `WrapErr` which provides `wrap_err_with` is implemented but not in scope; perhaps you want to import it
-     |
-5    + use eyre::WrapErr;
-     |
-help: there is a method `wrap_err` with a similar name
-     |
-67   -                 .wrap_err_with(|| format!("QuoterV2 simulation failed for pair {token_in:?} -> {token_out:?}"))?;
-67   +                 .wrap_err(|| format!("QuoterV2 simulation failed for pair {token_in:?} -> {token_out:?}"))?;
-     |
-
-error[E0599]: no method named `to_f64_lossy` found for struct `ethers::types::U256` in the current scope
-   --> bot/src/simulation.rs:229:54
+error[E0308]: mismatched types
+   --> bot/src/path_optimizer.rs:110:87
     |
-229 |     let dynamic_max_loan_weth = dynamic_max_loan_wei.to_f64_lossy() / 10f64.powi(config.weth_decimals as i32);
-    |                                                      ^^^^^^^^^^^^ method not found in `U256`
-
-warning: unused variable: `ws_url`
- --> bot/src/event_loop.rs:3:5
-  |
-3 |     ws_url: &str,
-  |     ^^^^^^ help: if this is intentional, prefix it with an underscore: `_ws_url`
-  |
-  = note: `#[warn(unused_variables)]` on by default
-
-warning: unused variable: `http_url`
- --> bot/src/event_loop.rs:4:5
-  |
-4 |     http_url: &str,
-  |     ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_http_url`
-
-error[E0609]: no field `wallet_address` on type `Config`
-   --> bot/src/state.rs:120:36
+110 |         if !((buy_pool_state.token0 == Some(weth_address) && buy_pool_state.token1 == Some(usdc_address)) ||
+    |                                                              ---------------------    ^^^^^^^^^^^^^^^^^^ expected `H160`, found `Option<H160>`
+    |                                                              |
+    |                                                              expected because this is `H160`
     |
-120 |             wallet_address: config.wallet_address,
-    |                                    ^^^^^^^^^^^^^^ unknown field
-    |
-help: a field with a similar name exists
-    |
-120 -             wallet_address: config.wallet_address,
-120 +             wallet_address: config.weth_address,
-    |
+    = note: expected struct `H160`
+                 found enum `std::option::Option<H160>`
 
-Some errors have detailed explanations: E0107, E0252, E0425, E0432, E0599, E0609.
-For more information about an error, try `rustc --explain E0107`.
-warning: `ulp1_5` (lib test) generated 3 warnings (1 duplicate)
-error: could not compile `ulp1_5` (lib test) due to 19 previous errors; 3 warnings emitted
+error[E0308]: mismatched types
+   --> bot/src/path_optimizer.rs:111:42
+    |
+111 |                (buy_pool_state.token0 == Some(usdc_address) && buy_pool_state.token1 == Some(weth_address))) {
+    |                 ---------------------    ^^^^^^^^^^^^^^^^^^ expected `H160`, found `Option<H160>`
+    |                 |
+    |                 expected because this is `H160`
+    |
+    = note: expected struct `H160`
+                 found enum `std::option::Option<H160>`
+
+error[E0308]: mismatched types
+   --> bot/src/path_optimizer.rs:111:89
+    |
+111 |                (buy_pool_state.token0 == Some(usdc_address) && buy_pool_state.token1 == Some(weth_address))) {
+    |                                                                ---------------------    ^^^^^^^^^^^^^^^^^^ expected `H160`, found `Option<H160>`
+    |                                                                |
+    |                                                                expected because this is `H160`
+    |
+    = note: expected struct `H160`
+                 found enum `std::option::Option<H160>`
+
+error[E0308]: mismatched types
+   --> bot/src/path_optimizer.rs:123:45
+    |
+123 |             if !((sell_pool_state.token0 == Some(weth_address) && sell_pool_state.token1 == Some(usdc_address)) ||
+    |                   ----------------------    ^^^^^^^^^^^^^^^^^^ expected `H160`, found `Option<H160>`
+    |                   |
+    |                   expected because this is `H160`
+    |
+    = note: expected struct `H160`
+                 found enum `std::option::Option<H160>`
+
+error[E0308]: mismatched types
+   --> bot/src/path_optimizer.rs:123:93
+    |
+123 |             if !((sell_pool_state.token0 == Some(weth_address) && sell_pool_state.token1 == Some(usdc_address)) ||
+    |                                                                   ----------------------    ^^^^^^^^^^^^^^^^^^ expected `H160`, found `Option<H160>`
+    |                                                                   |
+    |                                                                   expected because this is `H160`
+    |
+    = note: expected struct `H160`
+                 found enum `std::option::Option<H160>`
+
+error[E0308]: mismatched types
+   --> bot/src/path_optimizer.rs:124:47
+    |
+124 |                    (sell_pool_state.token0 == Some(usdc_address) && sell_pool_state.token1 == Some(weth_address))) {
+    |                     ----------------------    ^^^^^^^^^^^^^^^^^^ expected `H160`, found `Option<H160>`
+    |                     |
+    |                     expected because this is `H160`
+    |
+    = note: expected struct `H160`
+                 found enum `std::option::Option<H160>`
+
+error[E0308]: mismatched types
+   --> bot/src/path_optimizer.rs:124:95
+    |
+124 |                    (sell_pool_state.token0 == Some(usdc_address) && sell_pool_state.token1 == Some(weth_address))) {
+    |                                                                     ----------------------    ^^^^^^^^^^^^^^^^^^ expected `H160`, found `Option<H160>`
+    |                                                                     |
+    |                                                                     expected because this is `H160`
+    |
+    = note: expected struct `H160`
+                 found enum `std::option::Option<H160>`
+
+error[E0308]: mismatched types
+   --> bot/src/path_optimizer.rs:133:59
+    |
+133 |             let buy_is_t0_weth = buy_pool_state.token0 == Some(weth_address); 
+    |                                  ---------------------    ^^^^^^^^^^^^^^^^^^ expected `H160`, found `Option<H160>`
+    |                                  |
+    |                                  expected because this is `H160`
+    |
+    = note: expected struct `H160`
+                 found enum `std::option::Option<H160>`
+
+error[E0308]: mismatched types
+   --> bot/src/path_optimizer.rs:136:61
+    |
+136 |             let sell_is_t0_usdc = sell_pool_state.token0 == Some(usdc_address); 
+    |                                   ----------------------    ^^^^^^^^^^^^^^^^^^ expected `H160`, found `Option<H160>`
+    |                                   |
+    |                                   expected because this is `H160`
+    |
+    = note: expected struct `H160`
+                 found enum `std::option::Option<H160>`
+
+error[E0308]: mismatched types
+   --> bot/src/path_optimizer.rs:177:111
+    |
+177 | ...   match crate::simulation::find_optimal_loan_amount(app_state_clone, client_clone, &route_template, config_clone_for_task).await { 
+    |             ------------------------------------------- arguments to this function are incorrect        ^^^^^^^^^^^^^^^^^^^^^ expected `Arc<Config>`, found `Config`
+    |
+    = note: expected struct `Arc<Config>`
+               found struct `Config`
+note: function defined here
+   --> bot/src/simulation.rs:269:14
+    |
+269 | pub async fn find_optimal_loan_amount(
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+273 |     config: Arc<Config>, // Added config back
+    |     -------------------
+help: call `Into::into` on this expression to convert `Config` into `Arc<Config>`
+    |
+177 |             match crate::simulation::find_optimal_loan_amount(app_state_clone, client_clone, &route_template, config_clone_for_task.into()).await { 
+    |                                                                                                                                    +++++++
+
+error[E0609]: no field `simulation_gas_price_gwei` on type `&Config`
+   --> bot/src/simulation.rs:189:37
+    |
+189 |     let gas_price_gwei = config_ref.simulation_gas_price_gwei.unwrap_or(1.0); 
+    |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+error[E0609]: no field `simulation_timeout_seconds` on type `&Config`
+   --> bot/src/simulation.rs:224:67
+    |
+224 |     let gas_est_timeout_duration = Duration::from_secs(config_ref.simulation_timeout_seconds.unwrap_or(10)); 
+    |                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+error[E0609]: no field `simulation_gas_limit_default` on type `&Config`
+   --> bot/src/simulation.rs:235:35
+    |
+235 |             U256::from(config_ref.simulation_gas_limit_default.unwrap_or(500_000)) 
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+error[E0609]: no field `simulation_gas_limit_default` on type `&Config`
+   --> bot/src/simulation.rs:240:35
+    |
+240 |             U256::from(config_ref.simulation_gas_limit_default.unwrap_or(500_000)) 
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+error[E0609]: no field `simulation_min_gas_limit` on type `&Config`
+   --> bot/src/simulation.rs:246:46
+    |
+246 |     let min_flashloan_gas_limit = config_ref.simulation_min_gas_limit.unwrap_or(200_000); 
+    |                                              ^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+error[E0609]: no field `local_tests_inject_fake_profit` on type `Arc<Config>`
+   --> bot/src/simulation.rs:322:53
+    |
+322 |     if cfg!(feature = "local_simulation") && config.local_tests_inject_fake_profit.unwrap_or(false) { // Corrected field
+    |                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+error[E0308]: mismatched types
+   --> bot/src/simulation.rs:350:68
+    |
+350 |         let (reserve_loan, _reserve_other) = if buy_snap.token0 == Some(loan_token) { // buy_snap.token0 is Option<H160>
+    |                                                 ---------------    ^^^^^^^^^^^^^^^^ expected `H160`, found `Option<H160>`
+    |                                                 |
+    |                                                 expected because this is `H160`
+    |
+    = note: expected struct `H160`
+                 found enum `std::option::Option<H160>`
+
+error[E0308]: mismatched types
+   --> bot/src/simulation.rs:352:38
+    |
+352 |         } else if buy_snap.token1 == Some(loan_token) { // buy_snap.token1 is Option<H160>
+    |                   ---------------    ^^^^^^^^^^^^^^^^ expected `H160`, found `Option<H160>`
+    |                   |
+    |                   expected because this is `H160`
+    |
+    = note: expected struct `H160`
+                 found enum `std::option::Option<H160>`
+
+error[E0609]: no field `dynamic_sizing_velo_percentage` on type `&Config`
+   --> bot/src/simulation.rs:359:39
+    |
+359 |         let limit_percentage = config.dynamic_sizing_velo_percentage.unwrap_or(10); 
+    |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+error[E0609]: no field `test_config_uniswap_fee` on type `Arc<Config>`
+   --> bot/src/simulation.rs:456:44
+    |
+456 |             let fee_u24 = app_state_config.test_config_uniswap_fee.unwrap_or(3000); 
+    |                                            ^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+error[E0609]: no field `test_config_velo_stable` on type `Arc<Config>`
+   --> bot/src/simulation.rs:478:43
+    |
+478 |             let stable = app_state_config.test_config_velo_stable.unwrap_or(false); 
+    |                                           ^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+error[E0609]: no field `test_config_velo_factory` on type `Arc<Config>`
+   --> bot/src/simulation.rs:480:52
+    |
+480 |             let factory_address = app_state_config.test_config_velo_factory.unwrap_or_else(Address::zero); // Corrected field
+    |                                                    ^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+error[E0609]: no field `allow_submission_zero_profit` on type `&Config`
+   --> bot/src/transaction.rs:197:66
+    |
+197 |     if min_profit_threshold_for_check == U256::zero() && !config.allow_submission_zero_profit.unwrap_or(false) { 
+    |                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+error[E0609]: no field `submission_gas_limit_default` on type `&Config`
+   --> bot/src/transaction.rs:252:34
+    |
+252 |     tx_request.gas = Some(config.submission_gas_limit_default.unwrap_or(GAS_LIMIT_DEFAULT).into()); 
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+error[E0609]: no field `submission_gas_price_gwei_fixed` on type `&Config`
+   --> bot/src/transaction.rs:257:51
+    |
+257 |     if let Some(gas_price_override_gwei) = config.submission_gas_price_gwei_fixed { 
+    |                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+error[E0609]: no field `submission_timeout_duration_seconds` on type `&Config`
+   --> bot/src/transaction.rs:270:46
+    |
+270 |     match timeout(Duration::from_secs(config.submission_timeout_duration_seconds.unwrap_or(60)), submit_sequentially( config, client.prov...
+    |                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+error[E0609]: no field `submission_timeout_duration_seconds` on type `&Config`
+   --> bot/src/transaction.rs:296:81
+    |
+296 |             error!("Transaction submission timed out after {} seconds.", config.submission_timeout_duration_seconds.unwrap_or(60)); 
+    |                                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+error[E0609]: no field `transaction_relay_urls` on type `&Config`
+   --> bot/src/transaction.rs:312:36
+    |
+312 |     let configured_relays = config.transaction_relay_urls.clone().unwrap_or_default(); 
+    |                                    ^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+error[E0609]: no field `profit_sharing_bps_for_devs` on type `&Config`
+   --> bot/src/transaction.rs:144:48
+    |
+144 |     let profit_sharing_percentage_val = config.profit_sharing_bps_for_devs.unwrap_or(0); 
+    |                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+error[E0609]: no field `min_flat_profit_weth_threshold` on type `&Config`
+   --> bot/src/transaction.rs:148:43
+    |
+148 |     let min_flat_profit_weth_val = config.min_flat_profit_weth_threshold.unwrap_or(0.0001); 
+    |                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `ws_rpc_url`, `http_rpc_url`, `local_private_key`, `chain_id`, `arb_executor_address` ... and 29 others
+
+Some errors have detailed explanations: E0061, E0308, E0432, E0433, E0609.
+For more information about an error, try `rustc --explain E0061`.
+warning: `ulp1_5` (lib) generated 2 warnings
+error: could not compile `ulp1_5` (lib) due to 40 previous errors; 2 warnings emitted
 warning: build failed, waiting for other jobs to finish...
-warning: `ulp1_5` (lib) generated 3 warnings (2 duplicates)
-error: could not compile `ulp1_5` (lib) due to 19 previous errors; 3 warnings emitted
+warning: `ulp1_5` (lib test) generated 2 warnings (2 duplicates)
+error: could not compile `ulp1_5` (lib test) due to 40 previous errors; 2 warnings emitted
 
-🛑 Shutting down anvil (pid 5819)…
-ntjson@LAPTOP-74NQ7BNG:/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5$ 
+🛑 Shutting down anvil (pid 8568)…

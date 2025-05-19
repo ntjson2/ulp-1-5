@@ -68,8 +68,8 @@ async fn main() -> Result<()> {
         nonce_manager.clone(),
         config.clone(),
     ));
-    info!("🧠 State initialized."); 
-    let target_pair_filter = app_state.target_pair(); 
+    info!("🧠 State initialized.");
+    let target_pair_filter = app_state.as_ref().target_pair(); // Corrected
     info!(?target_pair_filter, "Target pair set.");
 
     info!("🔍 Fetching initial states..."); let mut tasks: Vec<JoinHandle<()>> = Vec::new(); let mut monitored = HashSet::new(); let fetch_timeout = Duration::from_secs(config.fetch_timeout_secs.unwrap_or(15));
@@ -241,12 +241,11 @@ async fn fetch_velo_style_pools<M: Middleware + 'static>(
     pool_len: U256,
     monitored: &mut HashSet<Address>,
     tasks: &mut Vec<JoinHandle<()>>,
-    client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
+    client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>, // Ensure this client is the signer client
     app_state: Arc<AppState>,
 ) where M: Middleware + Sync + Send, M::Error: Send + Sync + 'static {
-     // Access config via app_state.config
      let fetch_timeout = Duration::from_secs(app_state.config.fetch_timeout_secs.unwrap_or(15));
-     let target_pair_opt = app_state.target_pair();
+     let target_pair_opt = app_state.as_ref().target_pair(); // Corrected
 
      for i in 0..pool_len.as_usize() {
           let index = U256::from(i);
@@ -288,18 +287,17 @@ async fn fetch_velo_style_pools<M: Middleware + 'static>(
 
 /// Helper function specifically for Aerodrome factory type.
 async fn fetch_aero_style_pools(
-    factory_binding: &IAerodromeFactory<SignerMiddleware<Provider<Http>, LocalWallet>>,
+    factory_binding: &IAerodromeFactory<SignerMiddleware<Provider<Http>, LocalWallet>>, // Ensure this client is the signer client
     factory_addr: Address,
     pool_len: U256,
     monitored: &mut HashSet<Address>,
     tasks: &mut Vec<JoinHandle<()>>,
-    client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
+    client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>, // Ensure this client is the signer client
     app_state: Arc<AppState>,
 ) {
     let dex_type = DexType::Aerodrome;
-    // Access config via app_state.config
     let fetch_timeout = Duration::from_secs(app_state.config.fetch_timeout_secs.unwrap_or(15));
-    let target_pair_opt = app_state.target_pair();
+    let target_pair_opt = app_state.as_ref().target_pair(); // Corrected
 
      for i in 0..pool_len.as_usize() {
           let index = U256::from(i);

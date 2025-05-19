@@ -1,7 +1,9 @@
 // src/utils.rs
 
 // --- Imports ---
-use ethers::types::U256;
+use ethers::core::types::U256;
+use ethers::utils::format_units as ethers_format_units; // Alias to avoid conflict if used locally
+use eyre::Result;
 
 // --- Lossy U256 to f64 Conversion Trait ---
 pub trait ToF64Lossy {
@@ -31,5 +33,16 @@ pub fn v2_price_from_reserves(_reserve0: U256, _reserve1: U256, _decimals0: u8, 
 /// Parses a floating-point number (f64) representing a token amount
 /// into its corresponding U256 representation in "wei" (base units).
 pub fn f64_to_wei(_amount_f64: f64, _decimals: u32) -> Result<U256> {
+    // stub implementation
     Ok(U256::zero())
 }
+
+pub fn format_units(value: U256, decimals: i32) -> Result<String> {
+    ethers_format_units(value, decimals).map_err(|e| eyre::eyre!("Failed to format units: {}", e))
+}
+
+// Placeholder for uniswap_v3_math if it was intended to be a local module.
+// However, Cargo.toml lists it as a dependency, so this module is likely not needed here.
+// pub mod uniswap_v3_math {
+//    // ... functions ...
+// }
