@@ -1,7 +1,12 @@
 /bot/src/
 /abis/
 /contracts/
+/build/
+.env
 Cargo.toml
 README.md
-j9.md
-.env
+PROJECT_FEASIBILITY.md
+ULP-1.5-Networking.md
+PROJECT_LOG.md
+run_me.sh
+prompt.md

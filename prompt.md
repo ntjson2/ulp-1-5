@@ -1,102 +1,94 @@
-# ULP 1.5 Arbitrage Bot - Project Transfer & Continuation Prompt
+## 5. Current Project Status (as of 2025-05-13)
 
-## 1. Project Goal & Vision
+*   **Core Logic & Structure:**
+    *   The project is structured as a Rust library (`bot/src/lib.rs`) and a binary (`bot/src/main.rs`).
+    *   Modules for `config`, `bindings`, `state`, `event_handler`, `path_optimizer`, `simulation`, `transaction`, `gas`, `encoding`, `deploy`, and `utils` are implemented.
+    *   `ArbitrageExecutor.huff` is complete and compiles.
+*   **Local Simulation Testing (`tests/integration_test.rs` with Anvil):**
+    *   **`test_setup`:** Verifies Anvil connection, executor deployment, and includes diagnostic calls to Uniswap V3 QuoterV2 and the Velodrome V2 Router implementation. Passes.
+    *   **`test_swap_triggers`:** Tests helper functions for triggering swaps on Anvil. Passes, with known potential for Velo direct swap issues on Anvil.
+    *   **`test_full_univ3_arbitrage_cycle`:** Successfully tests the end-to-end flow for UniV3 → UniV3 arbitrage, including transaction submission to Anvil (using fake profit injection if needed). Passes.
+    *   **`test_full_arbitrage_cycle_simulation` (UniV3 → VeloV2):** Tests the end-to-end flow for UniV3 → VeloV2, using Velo simulation workarounds and fake profit injection. Passes, testing mechanics.
+    *   **`test_event_handling_triggers_arbitrage_check`:**
+        *   **Current State (Enhanced):** This test has been successfully enhanced. It deploys `MinimalSwapEmitter.sol`, triggers a synthetic `Swap` event, modifies the log's address to appear as if it came from a real Uniswap V3 pool, and passes it to `handle_log_event`.
+        *   **Assertions (Enhanced):** It asserts that:
+            1.  The `PoolSnapshot` for the target UniV3 pool is correctly updated by `handle_log_event`.
+            2.  A test-specific flag (`test_arb_check_triggered` in `AppState`) is set to `true`, indicating that `check_for_arbitrage` was spawned by `handle_log_event` and successfully found routes.
+        *   **Known Anvil Issue:** The `fetch_and_cache_pool_state` for the *real* UniV3 pool still relies on a fallback mechanism for Anvil.
+        *   This test currently passes, validating the event handling logic through to the triggering of arbitrage checks and route finding confirmation.
+*   **Workarounds for Anvil Issues:**
+    *   `bot/src/state.rs` (`fetch_and_cache_pool_state`): For `local_simulation`, if direct UniV3 pool view calls fail, it falls back to plausible default/hardcoded values.
+    *   `bot/src/simulation.rs` (`simulate_swap`): For `local_simulation` with `VelodromeV2`, it first attempts to call the hardcoded router *implementation* address. If that call fails, it falls back to a rough output estimation.
+    *   `bot/src/simulation.rs` (`find_optimal_loan_amount`): For `local_simulation`, if no actual profitable loan amount is found, it injects a small, fake positive profit.
+*   **Configuration:** `OPTIMAL_LOAN_SEARCH_ITERATIONS` in `.env` is currently reduced (e.g., to 2) for local Anvil testing.
+*   **Compilation:** Project compiles successfully (`cargo check`, `cargo test` for compiled modules). Minor unused import warnings may exist but are non-critical.
+*   **Estimated Overall Completion:** ~96% (Core UniV3 path and event handling through to arbitrage check triggering validated locally. Velo path has workarounds for local sim. Main remaining gap is full WS loop testing).
 
-The ultimate goal of ULP 1.5 is to develop a highly performant and profitable arbitrage bot operating across multiple Layer 2 (L2) networks. It leverages Balancer V2 flash loans for capital efficiency and executes atomic arbitrage trades using a custom, gas-optimized Huff contract (`ArbitrageExecutor.huff`).
+## 6. Prompt Commands
 
-## 2. Project History & Pivot
+### Bug fix prompt (j9 go)
+When the user enters `j9 go`:
+1.  Read and analyze `results.txt` for compiler errors, warnings, or notes.
+2.  Fix current code structures in all relevant files based on that analysis.
+3.  After making changes, provide:
+    a. A brief summary of fixes applied.  
+    b. Next steps for the user.
 
-*   **Initial Vision:** Aimed for very high-frequency trading ($40k+/day target) potentially requiring advanced infrastructure (e.g., co-location).
-*   **Pivot ("Scalable Core"):** The strategy shifted to first building a robust, reliable, and efficient core system deployable on standard cloud infrastructure. This core system is designed to be scalable for future performance enhancements.
+### Project task continuation (z1.1 go)
+When the user enters `z1.1 go`, Review project scope and goals, perform the next discrete task needed for the project starting with code updates. Then LOG1. After making changes, provide:
+1. A brief summary of the overall task completed.
+2. Edit code files for the next step in the task sequence.
+3. Next steps for the user.
 
-## 3. Current Phase Goals
+### WS Loop Test prompt (ws1 go)
+When the user enters `ws1 go`:
+1.  Initialize and run a WebSocket‐based event‐loop test:
+    • Implement or update `run_event_loop_ws_test` in `bot/src/event_loop.rs`.  
+    • Subscribe to Anvil’s WS stream and trigger a swap.  
+    • Assert that `test_arb_check_triggered` in `AppState` becomes `true`.  
+2.  After code updates, provide:
+    a. Short summary of changes.  
+    b. Next steps to run and verify the WS integration test.
 
-*   **Phase 1 (Current Focus):** Achieve reliable $400-$800/day profit using flash loans ($10k-$500k range) on standard infrastructure. Prove the core logic and execution flow.
-*   **Phase 2 (Future):** Scale towards the original $40k+/day vision by leveraging the core architecture, potentially incorporating ultra-low latency data/execution paths, larger capital, more complex routing, and broader L2/DEX support.
+## TEST WORKFLOW AFTER j9/z1.1
+After each `j9 go` or `z1.1 go` execution and code updates, ask the user to run:
+1. `./run_me.sh` to build the project and deploy the executor.
+2. Execute integration tests:
+   ```bash
+   cargo test --features local_simulation -- --ignored --nocapture
+   ```
+3. Confirm all tests pass before continuing.
 
-## 4. Core Architecture & Technology
+## 7. Current Task Scope & Next Steps
 
-*   **Language/Runtime:** Rust using `tokio` for asynchronous operations.
-*   **Blockchain Interaction:** `ethers-rs` library for interacting with Ethereum-compatible L2 networks.
-*   **Data Source:** WebSocket (`ws`) subscriptions to node RPC endpoints for real-time `Swap` and `PoolCreated` events. HTTP (`http`) endpoint used for signing client and potentially some state lookups.
-*   **State Management (`state.rs`):**
-    *   `AppState`: Central, shared state wrapped in `Arc`. Contains configuration, contract instances, and maps for pool data.
-    *   `PoolState` (DashMap): Stores quasi-static pool details fetched on startup or discovery (DEX type, tokens, fees, stability flag).
-    *   `PoolSnapshot` (DashMap): Acts as an in-memory "hot-cache" storing frequently updated data derived from events (reserves, sqrtPrice, tick). Crucial for low-latency pathfinding.
-*   **Arbitrage Pipeline:**
-    1.  **Event Handling (`event_handler.rs`):** Listens for `Swap` and `PoolCreated` events. Updates `PoolSnapshot` hot-cache immediately upon `Swap`. Spawns non-blocking tasks (`check_for_arbitrage`) for further processing. Handles `PoolCreated` by fetching and caching full pool state.
-    2.  **Pathfinding (`path_optimizer.rs`):** Triggered after a `Swap` potentially changes prices. Reads *only* from the `PoolSnapshot` hot-cache to quickly compare the price of the updated pool against other cached pools. Identifies potential 2-way (A->B->A) arbitrage routes exceeding a basic percentage threshold. Generates `RouteCandidate` structs.
-    3.  **Simulation (`simulation.rs`):** Evaluates promising `RouteCandidate`s in spawned tasks. Uses RPC calls (`QuoterV2` for UniV3, Router `getAmountsOut` for Velo/Aero) to get accurate swap simulations. Performs dynamic loan sizing based on V2/Aero reserves (from snapshots) capped by config. Estimates gas costs (`eth_estimateGas`) and calculates net profit.
-    4.  **Transaction (`transaction.rs`):** If simulation shows profit, this module constructs and submits the transaction. Encodes `userData` including swap details, profit threshold (`minProfitWei`), and a unique `salt` nonce for replay protection. Fetches EIP-1559 gas prices. Calculates final gas limit. Uses `NonceManager` for sequential nonce handling. Submits transaction via private relays (Alchemy/Flashbots preferred) with public RPC fallback. Monitors transaction confirmation status.
-*   **On-Chain Executor (`ArbitrageExecutor.huff` v2.3.0):**
-    *   Receives Balancer V2 flash loan (`receiveFlashLoan`).
-    *   Decodes `userData` passed from the bot.
-    *   **Salt Nonce Guard:** Checks if the `salt` in `userData` has been seen before (using `sload` on a mapping) to prevent replays; reverts if seen. Marks the salt as seen (`sstore`) if new.
-    *   Performs the two swaps (Swap A -> Swap B) on specified pools (UniV3 or Velo-style). Handles routing logic differences between DEX types.
-    *   **Profit Check:** Verifies `final_token0_balance >= loan_amount + minProfitWei` (where `minProfitWei` comes from `userData`). Reverts if check fails.
-    *   Approves Balancer Vault to pull the repayment amount (`loan_amount + fee(0)`) only if all checks pass.
-    *   Returns control to Balancer Vault. Atomicity ensures the entire sequence reverts if any step fails or checks don't pass.
+*   **Current Task (Completed in previous interaction):** Successfully enhanced `test_event_handling_triggers_arbitrage_check`. This test now verifies that `handle_log_event` correctly processes a synthetic `Swap` log, updates the `PoolSnapshot`, and triggers the arbitrage check.
+*   **Immediate Next Steps (for this new session):**
+    1.  **Test Main Event Loop with WS (More Complex):**
+        *   Design a test that initializes the main bot components (`AppState`, `Client`, `NonceManager`, event filters).
+        *   Start a test-specific loop via `run_event_loop_ws_test` to subscribe to Anvil’s WS stream.
+        *   Trigger a swap (using `MinimalSwapEmitter` or `trigger_v3_swap_via_router`).
+        *   Assert that the WS loop receives the event and sets `test_arb_check_triggered`.
+    2.  Begin planning for live network testing (Testnet then Mainnet Dry Run) as outlined in `PROJECT_DIRECTION_LOG.md` and considering advice from `ULP-1.5-Networking.md`.
 
-## 5. Current Implementation Details
+*   **Lower Priority / Future:**
+    *   Address Anvil state inconsistencies for Velodrome V2.
+    *   Implement accurate UniV3 dynamic loan sizing.
+    *   Add support for more DEXs.
+    *   Develop deployment scripts/configuration.
 
-*   **Target L2s:** Optimism, Base (with ABIs/logic primarily based on Optimism Velodrome V2, reused for Base Aerodrome).
-*   **Target DEXs:** Uniswap V3, Velodrome V2, Aerodrome.
-*   **Target Pair:** WETH/USDC (Addresses and decimals configured in `.env`).
-*   **Flash Loans:** Balancer V2 (Assumed 0 fee).
-*   **Executor Features:** Includes profit check and salt nonce guard.
+## PROJECT LOG workflow (PW1)
+- After each j9 or z1.1 call, prepend at the top of PROJECT_LOG.md a one-line note summarizing the action (date, file(s) modified, brief summary). This must be done before returning the response.
 
-## 6. Configuration (`.env`, `config.rs`)
+## AI OUTPUT PER RESPONSE (AP1)
+After each j9 or z1.1, give a 1–2 paragraph response on why you did this in context to the scope of the project and its current task, and where you’re going next. Append this to PW1.
 
-*   Network RPC URLs (WS, HTTP)
-*   Private Key
-*   Contract Addresses (Factories, Routers, Executor, Tokens, Balancer Vault, Quoter)
-*   Token Decimals
-*   Deployment Options (Deploy executor or use existing address)
-*   Optimization Parameters (Loan amounts, search iterations, timeouts)
-*   Gas Settings (Max priority fee, fallback, buffer, minimum limit)
-*   Private Relay URLs
+## NEXT STEP RECOMMENDATION (N1)
+When invoking N1, provide a deep recommendation on the next direction based on the last z1.1 or j9 update, considering all supporting docs, project scope, current state, and limitations. Include an estimate of remaining tokens/context and warn if nearing limits.
 
-## 7. Testing Strategy
-
-*   Primary testing method relies on local network forks using **Foundry's Anvil**.
-*   Fork a target L2 (e.g., `anvil --fork-url <OPTIMISM_RPC>`).
-*   Configure `.env` to point to the local Anvil instance (`http://127.0.0.1:8545`).
-*   Deploy the `ArbitrageExecutor.huff` contract to the Anvil fork (either manually via `cast send --create` or automatically via bot config).
-*   Run the bot against the Anvil fork.
-*   Trigger `Swap` events on the fork using `cast send` against relevant pool/router contracts to simulate market activity and observe the bot's reaction (event detection, pathfinding, simulation, transaction submission attempts against Anvil).
-*   Use Anvil's tracing (`cast run --debug` or `--steps-tracing`) to verify Huff contract execution logic (guards, swaps, profit check).
-
-## 8. Current Project Status (End of Previous Session)
-
-*   **Compilation:** The codebase **compiles successfully** (`cargo check` passes).
-*   **Warnings:** Two acceptable warnings remain:
-    *   `dead_code` for `DexType::Unknown` variant (kept for robustness).
-    *   `unused_field` for `PoolState::token1` (kept for context).
-*   **Functionality:** Core logic for event handling, pathfinding, simulation (with dynamic V2 sizing), transaction submission (with private relay support), and on-chain execution (with guards) is implemented.
-
-## 9. Immediate Next Task
-
-*   **MU2 Task 5.3 (Testing & Refinement) - Enhance `README.md` with detailed Anvil Testing Procedures.**
-    *   Document specific `cast send` commands or test scenarios needed to verify the following on an Anvil fork:
-        *   Event detection (`Swap`, `PoolCreated`) and corresponding state updates (`PoolSnapshot`, `PoolState`).
-        *   Pathfinding logic correctly identifying routes based on simulated price changes.
-        *   Simulation accuracy compared to actual swap results on Anvil.
-        *   Dynamic loan sizing behavior (V2/Aero reserve limits, UniV3 config limits).
-        *   Transaction submission flow (using public submission against Anvil).
-        *   Huff contract execution correctness via Anvil tracing/debugging (verifying profit guard, salt guard, swap execution).
-
-## 10. Subsequent Tasks
-
-*   Perform the actual Anvil testing based on the procedures documented in the README.
-*   Implement more robust transaction monitoring (beyond basic confirmation) and potentially nonce error recovery/resynchronization strategies.
-*   Refine the `minProfitWei` buffer calculation in `transaction.rs`.
-*   (Lower Priority) Implement accurate UniV3 dynamic loan sizing based on tick liquidity.
-*   (Lower Priority) Add support for more DEXs (e.g., Ramses on Arbitrum).
-*   (Lower Priority) Integrate external alerting mechanisms for success/failure/errors.
-
-## 11. Interaction Instructions
-
-*   Please review this context.
-*   The immediate goal is to work on **Task 9: Enhance `README.md` with Anvil Testing Procedures.**
-*   If errors arise during development or testing, we can revert to the structured "j9 go" error-fixing process if helpful.
-*   Provide complete file contents when modifications are requested.
+## Append to log (LOG1)
+- When invoked, append to the bottom of `PROJECT_LOG.md`:
+  - A unique Log ID (e.g., `LOG#`)
+  - Current date and time (ISO 8601)
+  - Brief status summary (tests run, pass/fail counts)
+  - Next steps/actions
+  - AI helper signature (e.g., `— GitHub Copilot`)

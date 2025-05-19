@@ -12,6 +12,14 @@ use tracing::{debug, instrument}; // Import tracing macros
 
 // Re-import BalancerVault binding from crate root
 use crate::bindings::BalancerVault;
+use crate::config::Config; // Assuming Config is in crate::config
+use std::error::Error as StdError; // Added for the 'static bound
+
+#[derive(Debug, Clone, Copy)]
+pub struct GasInfo {
+    pub max_fee_per_gas: U256,
+    pub max_priority_fee_per_gas: U256,
+}
 
 /// Estimates the gas required for the Balancer flash loan transaction.
 /// This involves sending an `eth_estimateGas` RPC call.
@@ -63,5 +71,21 @@ pub async fn estimate_flash_loan_gas(
 
     debug!(estimated_gas = %estimated_gas_units, "Gas estimation successful");
     Ok(estimated_gas_units)
+}
+
+pub async fn fetch_gas_price<M: Middleware>(
+    client: Arc<M>,
+    _config: &Config, // config might be used for overrides or strategy
+) -> Result<GasInfo> 
+where <M as Middleware>::Error: StdError + Send + Sync + 'static { // Added 'static bound
+    // Placeholder: Fetch current EIP-1559 gas prices
+    // In a real scenario, you might use client.get_gas_price() for legacy,
+    // or client.estimate_eip1559_fees(None) for EIP-1559.
+    // For simplicity, returning fixed values or simple calculation.
+    let (max_fee, priority_fee) = client.estimate_eip1559_fees(None).await?;
+    Ok(GasInfo {
+        max_fee_per_gas: max_fee,
+        max_priority_fee_per_gas: priority_fee,
+    })
 }
 // END OF FILE: bot/src/gas.rs

@@ -1,0 +1,3 @@
+🔌 Spawning anvil …
+
+🛑 Shutting down anvil (pid 8679)…

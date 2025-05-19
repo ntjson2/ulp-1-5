@@ -1,3 +1,6 @@
-Task tracking: 
-j8 Task: MU2 Task 5.2 (Error Resolution) - Step 1 Complete
-j8... 
+ULP 1.5 Arbitrage Bot - Project Transfer. Study attached all_files_combined.txt
+Update and give me complete, updated and whole files of: PROJECT_FEASIBILITY.md, PROJECT_DIRECTION_LOG.md and prompt.md according 
+with new and updated current project state and future direction, be detailed and accurate. Make sure in PROJECT_DIRECTION_LOG you clearly outline in 
+detail the current task we are currently working on, complete with what just occured, what needs to be met and where the next steps are.
+
+Give me advice on a way to start a process where when I run the run_me.sh script (in a vs code wsl terminal) and prompt you "p1 go", that you take the results somehow output to resuls.txt, fix the errors with code file edits, rerun run_me.sh repeatedly until the errors are fixed? Some kind of .bat file with "run_me.sh" in a loop? other?

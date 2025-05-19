@@ -1,203 +1,221 @@
 // bot/src/path_optimizer.rs
 
+use crate::state::{AppState, DexType, PoolSnapshot, PoolState};
 use crate::config::Config;
-// FIX Warning: Remove unused AppState, PoolState
-use crate::state::{DexType, PoolSnapshot, PoolState};
-// FIX Warning: Remove unused v2_price_from_reserves, v3_price_from_sqrt
-// use crate::utils::{v2_price_from_reserves, v3_price_from_sqrt};
-// FIX Warning: Remove unused U256
-use ethers::types::Address;
-use eyre::{eyre, Result, WrapErr};
-use dashmap::DashMap; // Keep DashMap
+use ethers::types::{Address, U256, I256};
+use eyre::{eyre, Result};
 use std::sync::Arc;
-// FIX Warning: Remove unused error
-use tracing::{debug, info, instrument, trace, warn};
+use tracing::{debug, info, warn, instrument};
+use uniswap_v3_math; // Direct crate import
 
 // Represents a potential arbitrage opportunity (route) found.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RouteCandidate {
+    pub path: Vec<Address>,
+    pub dex_path: Vec<DexType>,
+    pub estimated_profit_wei: U256,
+    pub optimal_loan_amount_wei: U256,
+    pub zero_for_one_a: bool, // Direction for pool A (buy_pool)
+    pub zero_for_one_b: bool, // Direction for pool B (sell_pool)
     pub buy_pool_addr: Address,
     pub sell_pool_addr: Address,
-    pub buy_dex_type: DexType, // Correctly populated with Velo or Aero
-    pub sell_dex_type: DexType, // Correctly populated with Velo or Aero
-    pub token_in: Address,
-    pub token_out: Address,
-    pub buy_pool_fee: Option<u32>,
-    pub sell_pool_fee: Option<u32>,
-    pub buy_pool_stable: Option<bool>,
-    pub sell_pool_stable: Option<bool>,
-    pub zero_for_one_a: bool,
-    pub estimated_profit_usd: f64, // Placeholder metric
+    pub buy_dex_type: DexType,
+    pub sell_dex_type: DexType,
+    pub token_in_buy_pool: Address,  // Token we are "buying" from buy_pool (this is WETH)
+    pub token_out_buy_pool: Address, // Token we are "selling" to buy_pool (this is USDC)
+    pub token_in_sell_pool: Address, // Token we are "selling" to sell_pool (this is USDC)
+    pub token_out_sell_pool: Address,// Token we are "getting" from sell_pool (this is WETH)
 }
 
-// Define the threshold here for now, could be moved to config later
-const ARBITRAGE_THRESHOLD_PERCENTAGE: f64 = 0.1; // Example: 0.1% difference needed
-
-/// Identifies potential 2-way arbitrage routes involving the updated pool's snapshot.
-/// Compares prices derived from snapshots in the hot cache.
-// FIX instrument skip error: removed non-existent 'config' from skip list
-#[instrument(skip(all_pool_states, all_pool_snapshots), level="debug", fields(pool=%updated_pool_snapshot.pool_address))]
-pub fn find_top_routes(
-    updated_pool_snapshot: &PoolSnapshot, // Triggering snapshot
-    all_pool_states: &Arc<DashMap<Address, PoolState>>, // Source of detailed state context
-    all_pool_snapshots: &Arc<DashMap<Address, PoolSnapshot>>, // Map to iterate for comparison (hot cache)
-    _config: &Config, // Mark as unused
-    weth_address: Address,
-    usdc_address: Address,
-    weth_decimals: u8,
-    usdc_decimals: u8,
-) -> Vec<RouteCandidate> {
-    trace!("Finding routes for updated pool snapshot");
-
-    let mut candidates = Vec::new();
-    let updated_pool_address = updated_pool_snapshot.pool_address;
-
-    // Get context for the updated pool
-    let updated_pool_state_context = match all_pool_states.get(&updated_pool_address) {
-        Some(state_ref) => state_ref,
-        None => { warn!(pool = %updated_pool_address, "Ctx missing for updated snapshot"); return vec![]; }
-    };
-
-    // Calculate price for the updated pool using its snapshot + context
-    let updated_price = match calculate_cached_price( updated_pool_snapshot, &updated_pool_state_context, weth_address, usdc_address, weth_decimals, usdc_decimals ) {
-        Ok(price) => { trace!(pool = %updated_pool_address, price = price, "Calculated updated price from snapshot."); price },
-        Err(e) => { warn!(pool = %updated_pool_address, error = ?e, "Failed updated price calc"); return vec![]; }
-    };
-
-    // Iterate through snapshots in the hot cache for comparison
-    trace!( "Iterating through {} snapshots...", all_pool_snapshots.len() );
-    for snapshot_entry in all_pool_snapshots.iter() {
-        let other_pool_snapshot = snapshot_entry.value();
-        let other_pool_addr = snapshot_entry.key();
-
-        // Check 1: Skip self-comparison
-        if *other_pool_addr == updated_pool_address { continue; }
-
-        // Check 2: Ensure the other pool involves the target pair
-        let is_other_target_pair = (other_pool_snapshot.token0 == weth_address && other_pool_snapshot.token1 == usdc_address) || (other_pool_snapshot.token0 == usdc_address && other_pool_snapshot.token1 == weth_address);
-        if !is_other_target_pair { continue; }
-
-        trace!(compare_pool = %other_pool_addr, "Comparing against snapshot.");
-
-        // Get context for the comparison pool
-        let other_pool_state_context = match all_pool_states.get(other_pool_addr) { Some(r)=>r, None=>{warn!(pool=%other_pool_addr, "Ctx missing"); continue;}};
-
-        // Calculate price for the other pool using its snapshot + context
-        let other_price = match calculate_cached_price( other_pool_snapshot, &other_pool_state_context, weth_address, usdc_address, weth_decimals, usdc_decimals ) {
-            Ok(p)=>p, Err(e)=>{trace!(pool=%other_pool_addr, error=?e, "Skip: Other price failed"); continue;}
-        };
-
-        // Compare prices and check threshold
-        if other_price.abs() < f64::EPSILON { trace!(pool=%other_pool_addr,"Skip: Other price zero"); continue; }
-
-        let price_diff = updated_price - other_price;
-        let lower_price = updated_price.min(other_price);
-        // Avoid division by zero if lower_price is extremely small
-        let price_diff_percentage = if lower_price.abs() > f64::EPSILON {
-            (price_diff.abs() / lower_price) * 100.0
-        } else {
-            f64::INFINITY // Treat as infinite difference if base price is zero
-        };
-
-
-        trace!( pool1 = %updated_pool_address, price1 = updated_price, pool2 = %other_pool_addr, price2 = other_price, diff_pct = price_diff_percentage );
-
-        if price_diff_percentage >= ARBITRAGE_THRESHOLD_PERCENTAGE {
-            let (buy_snapshot, sell_snapshot, buy_state, sell_state) =
-                if updated_price < other_price {
-                    (updated_pool_snapshot, other_pool_snapshot, updated_pool_state_context.value(), other_pool_state_context.value())
-                } else {
-                    (other_pool_snapshot, updated_pool_snapshot, other_pool_state_context.value(), updated_pool_state_context.value())
-                };
-
-             info!( buy_pool = %buy_snapshot.pool_address, dex = ?buy_snapshot.dex_type, sell_pool = %sell_snapshot.pool_address, dex = ?sell_snapshot.dex_type, diff_pct = price_diff_percentage, "Potential arbitrage opportunity found!" );
-
-            // Create RouteCandidate
-            let zero_for_one_a = determine_swap_direction(buy_state, weth_address);
-            trace!(buy_pool = %buy_state.pool_address, zero_for_one_a, "Determined swap direction");
-
-            let candidate = RouteCandidate {
-                buy_pool_addr: buy_snapshot.pool_address,
-                sell_pool_addr: sell_snapshot.pool_address,
-                buy_dex_type: buy_snapshot.dex_type, // DexType is Copy
-                sell_dex_type: sell_snapshot.dex_type, // DexType is Copy
-                token_in: weth_address, token_out: usdc_address,
-                buy_pool_fee: buy_state.uni_fee, sell_pool_fee: sell_state.uni_fee, // Use fee/stable from detail state
-                buy_pool_stable: buy_state.velo_stable, sell_pool_stable: sell_state.velo_stable,
-                zero_for_one_a, estimated_profit_usd: price_diff_percentage, // Use percentage diff as placeholder estimate
-            };
-
-            debug!(candidate = ?candidate, "Created RouteCandidate");
-            candidates.push(candidate);
-        }
-    } // End loop through snapshots
-
-    // Sort candidates by estimated profit (descending)
-    if !candidates.is_empty() {
-        candidates.sort_by(|a, b| b.estimated_profit_usd.partial_cmp(&a.estimated_profit_usd).unwrap_or(std::cmp::Ordering::Equal));
-        debug!("Sorted {} candidates by estimated profit (desc).", candidates.len());
-         if let Some(top_candidate) = candidates.first() { info!(top_candidate = ?top_candidate, "Most promising candidate identified."); }
-    } else { trace!("No arbitrage candidates found meeting threshold."); }
-
-    candidates
+impl RouteCandidate {
+    // Basic ID for logging/tracing, can be made more sophisticated
+    pub fn id(&self) -> String {
+        format!("{:?}-{:?}", self.buy_pool_addr, self.sell_pool_addr)
+    }
 }
-
-/// Helper to determine swap direction (zeroForOne) for the first swap (Swap A) in the buy_pool.
-fn determine_swap_direction(buy_pool_state: &PoolState, loan_token: Address) -> bool {
-    buy_pool_state.token0 == loan_token
-}
-
 
 /// Internal helper to calculate WETH/USDC price using snapshot data + state context.
-/// Calls base price calculation functions from utils.rs.
-#[instrument(level="trace", skip(snapshot, state_context), fields(pool=%snapshot.pool_address, dex=?snapshot.dex_type))]
-fn calculate_cached_price(
+// This function was marked async in previous iterations. If it's used by the main async path, it should remain async.
+// However, the main async find_top_routes doesn't call this directly.
+// It's kept here for now, but its usage needs to be clarified or it might be unused by the primary async logic.
+#[tracing::instrument(level="trace", skip(snapshot, state_context, config, app_state), fields(pool=%snapshot.pool_address, dex=?snapshot.dex_type))]
+pub async fn calculate_price_usdc_per_weth(
     snapshot: &PoolSnapshot,
     state_context: &PoolState,
-    weth_address: Address,
-    _usdc_address: Address, // Marked unused
-    weth_decimals: u8,
-    usdc_decimals: u8,
-) -> Result<f64> {
-    // Sanity checks
-    if snapshot.pool_address != state_context.pool_address { return Err(eyre!("Snapshot/State address mismatch")); }
-    if snapshot.dex_type != state_context.dex_type { warn!(pool=%snapshot.pool_address, snap_dex=?snapshot.dex_type, state_dex=?state_context.dex_type, "Snapshot/State DEX mismatch!"); }
+    config: &Config,
+    _app_state: Arc<AppState>, // app_state was for decimals, now directly from config
+) -> eyre::Result<f64> { 
+    if snapshot.pool_address != state_context.pool_address {
+        return Err(eyre!("Snapshot/State address mismatch during price calculation for {}", snapshot.pool_address));
+    }
+    let weth_address = config.weth_address;
+    // let usdc_address = config.usdc_address; // Not directly used for price logic here
+    let weth_decimals = config.weth_decimals;
+    let usdc_decimals = config.usdc_decimals;
 
-    // Determine t0_is_weth from reliable PoolState context
-    let t0_is_weth = match state_context.t0_is_weth {
-        Some(is_weth) => is_weth,
-        None => { warn!(pool = %state_context.pool_address, "t0_is_weth flag not cached in state context, deriving from tokens"); state_context.token0 == weth_address }
-    };
 
-    // FIX E0599: Apply wrap_err_with to the Result from the match
-    let price_t1_per_t0_result = match snapshot.dex_type {
+    let t0_is_weth = state_context.token0 == Some(weth_address); // state_context.token0 is Option<Address>
+    let price: f64 = match snapshot.dex_type {
         DexType::UniswapV3 => {
-            let sqrt_price = snapshot.sqrt_price_x96.ok_or_else(|| eyre!("Snapshot missing sqrtPriceX96"))?;
+            let sqrt_price = snapshot.sqrt_price_x96.ok_or_else(|| eyre!("Snapshot missing sqrtPriceX96 for UniV3 pool {}", snapshot.pool_address))?;
             let (dec0, dec1) = if t0_is_weth { (weth_decimals, usdc_decimals) } else { (usdc_decimals, weth_decimals) };
-            crate::utils::v3_price_from_sqrt(sqrt_price, dec0, dec1)
+            // Corrected path for sqrt_price_x96_to_price
+            uniswap_v3_math::price_math::sqrt_price_x96_to_price(sqrt_price, dec0.into(), dec1.into())?
         }
         DexType::VelodromeV2 | DexType::Aerodrome => {
-            let r0 = snapshot.reserve0.ok_or_else(|| eyre!("Snapshot missing reserve0"))?;
-            let r1 = snapshot.reserve1.ok_or_else(|| eyre!("Snapshot missing reserve1"))?;
+            let r0 = snapshot.reserve0.ok_or_else(|| eyre!("Snapshot missing reserve0 for V2 pool {}", snapshot.pool_address))?;
+            let r1 = snapshot.reserve1.ok_or_else(|| eyre!("Snapshot missing reserve1 for V2 pool {}", snapshot.pool_address))?;
             let (dec0, dec1) = if t0_is_weth { (weth_decimals, usdc_decimals) } else { (usdc_decimals, weth_decimals) };
-            crate::utils::v2_price_from_reserves(r0, r1, dec0, dec1)
+            if r0.is_zero() || r1.is_zero() { return Ok(0.0); } 
+            let price_token0_per_token1 = r1.as_u128() as f64 * 10f64.powi(dec0 as i32) / (r0.as_u128() as f64 * 10f64.powi(dec1 as i32));
+            price_token0_per_token1 
         }
-        DexType::Unknown => Err(eyre!("Unknown DEX type in snapshot"))
+        DexType::Unknown => return Err(eyre!("Unknown DEX type in snapshot for pool {}", snapshot.pool_address)),
     };
 
-    let price_t1_per_t0 = price_t1_per_t0_result
-        .wrap_err_with(|| format!("Base price calculation failed for pool {}", snapshot.pool_address))?;
-
-    // Convert price(T1)/price(T0) to price(USDC)/price(WETH)
-    let price_usdc_per_weth = if t0_is_weth { // T0=WETH, T1=USDC. price_t1_per_t0 = USDC/WETH
-        price_t1_per_t0
-    } else { // T0=USDC, T1=WETH. price_t1_per_t0 = WETH/USDC. Need inverse for USDC/WETH
-        if price_t1_per_t0.abs() < f64::EPSILON { return Err(eyre!("Intermediate price zero, cannot invert")); }
-        1.0 / price_t1_per_t0
+    let usdc_per_weth_price = if state_context.token0 == Some(weth_address) { // If token0 is WETH
+        // price is price of token0 (WETH) in terms of token1 (USDC)
+        // So, price is WETH/USDC. We want USDC/WETH, so invert.
+        if price.abs() < f64::EPSILON { return Err(eyre!("Intermediate price (WETH/USDC) is zero for pool {}, cannot invert", snapshot.pool_address)); }
+        1.0 / price 
+    } else { // token0 is USDC, token1 is WETH
+        // price is price of token0 (USDC) in terms of token1 (WETH)
+        // So, price is USDC/WETH. This is what we want.
+        price
     };
 
-    if !price_usdc_per_weth.is_finite() { return Err(eyre!("Calculated non-finite USDC/WETH price")); }
+    if !usdc_per_weth_price.is_finite() {
+        return Err(eyre!("Calculated non-finite USDC/WETH price for pool {}", snapshot.pool_address));
+    }
+    Ok(usdc_per_weth_price)
+}
 
-    trace!(price = price_usdc_per_weth, "Calculated USDC/WETH price from snapshot");
-    Ok(price_usdc_per_weth)
+// This is the main async find_top_routes function (previously around line 265)
+#[instrument(skip_all, level = "info")]
+pub async fn find_top_routes(
+    app_state: Arc<AppState>,
+) -> Vec<RouteCandidate> {
+    info!("Searching for top arbitrage routes...");
+    let mut candidates = Vec::new();
+    let config = app_state.config.clone(); // Clone Arc<Config>
+    let client = app_state.client.clone();
+
+    let weth_address = config.weth_address; 
+    let usdc_address = config.usdc_address; 
+
+    for buy_pool_entry in app_state.pool_states.iter() {
+        let buy_pool_addr = *buy_pool_entry.key(); 
+        let buy_pool_state = buy_pool_entry.value();
+
+        if !((buy_pool_state.token0 == Some(weth_address) && buy_pool_state.token1 == Some(usdc_address)) ||
+               (buy_pool_state.token0 == Some(usdc_address) && buy_pool_state.token1 == Some(weth_address))) {
+            continue;
+        }
+
+        for sell_pool_entry in app_state.pool_states.iter() {
+            let sell_pool_addr = *sell_pool_entry.key(); 
+            let sell_pool_state = sell_pool_entry.value();
+
+            if buy_pool_addr == sell_pool_addr {
+                continue;
+            }
+
+            if !((sell_pool_state.token0 == Some(weth_address) && sell_pool_state.token1 == Some(usdc_address)) ||
+                   (sell_pool_state.token0 == Some(usdc_address) && sell_pool_state.token1 == Some(weth_address))) {
+                continue;
+            }
+            
+            let token_in_buy_pool = weth_address;
+            let token_out_buy_pool = usdc_address;
+            let token_in_sell_pool = usdc_address;
+            let token_out_sell_pool = weth_address;
+
+            let buy_is_t0_weth = buy_pool_state.token0 == Some(weth_address); 
+            let zero_for_one_a = buy_is_t0_weth; 
+
+            let sell_is_t0_usdc = sell_pool_state.token0 == Some(usdc_address); 
+            // If selling USDC for WETH:
+            // zero_for_one_b is true if token_in_sell_pool (USDC) is token0 of sell_pool.
+            // This means we are selling token0 (USDC) for token1 (WETH).
+            let zero_for_one_b = sell_is_t0_usdc;
+
+
+            let route_candidate = RouteCandidate {
+                path: vec![buy_pool_addr, sell_pool_addr], 
+                dex_path: vec![buy_pool_state.dex_type, sell_pool_state.dex_type], 
+                estimated_profit_wei: U256::zero(), 
+                optimal_loan_amount_wei: U256::zero(),
+                zero_for_one_a, 
+                zero_for_one_b, 
+                buy_pool_addr,    
+                sell_pool_addr,  
+                buy_dex_type: buy_pool_state.dex_type, 
+                sell_dex_type: sell_pool_state.dex_type,
+                token_in_buy_pool,
+                token_out_buy_pool,
+                token_in_sell_pool,
+                token_out_sell_pool,
+            };
+            
+            candidates.push(route_candidate);
+        }
+    }
+    
+    if candidates.is_empty() {
+        info!("No potential WETH/USDC arbitrage routes found from pool states.");
+        return Vec::new();
+    }
+
+    let mut profitable_routes = Vec::new();
+    let mut simulation_tasks = Vec::new();
+
+    for route_template in candidates {
+        let app_state_clone = app_state.clone();
+        let client_clone = client.clone();
+        let config_clone_for_task = config.clone(); // Clone Arc<Config> for the task
+        simulation_tasks.push(tokio::spawn(async move {
+            match crate::simulation::find_optimal_loan_amount(app_state_clone, client_clone, &route_template, config_clone_for_task).await { 
+                Ok((optimal_loan, estimated_profit)) => { 
+                    if estimated_profit > I256::zero() {
+                        let mut finalized_route = route_template.clone();
+                        finalized_route.optimal_loan_amount_wei = optimal_loan;
+                        finalized_route.estimated_profit_wei = estimated_profit.into_raw();
+                        Some(finalized_route)
+                    } else {
+                        None
+                    }
+                }
+                Err(e) => {
+                    warn!(route = ?route_template.id(), error = ?e, "Error finding optimal loan for route");
+                    None
+                }
+            }
+        }));
+    }
+
+    let simulation_results = futures_util::future::join_all(simulation_tasks).await;
+    for result in simulation_results {
+        match result {
+            Ok(Some(route)) => profitable_routes.push(route),
+            Ok(None) => { /* No profitable loan found or already logged */ }
+            Err(e) => warn!(error = ?e, "Simulation task panicked"),
+        }
+    }
+
+    profitable_routes.sort_by(|a, b| b.estimated_profit_wei.cmp(&a.estimated_profit_wei));
+    
+    info!("Found {} potentially profitable routes after simulation.", profitable_routes.len());
+    for route in profitable_routes.iter().take(5) {
+        debug!(route_id = %route.id(), profit_wei = %route.estimated_profit_wei, loan_wei = %route.optimal_loan_amount_wei, "Top route candidate");
+    }
+    profitable_routes
+}
+
+pub fn calculate_price_example(
+    sqrt_price: U256,
+    dec0: u8,
+    dec1: u8,
+) -> Result<f64> {
+    uniswap_v3_math::price_math::sqrt_price_x96_to_price(sqrt_price, dec0.into(), dec1.into())
+        .map_err(|e| eyre!("Failed to convert sqrt_price_x96 to price: {:?}", e))
 }

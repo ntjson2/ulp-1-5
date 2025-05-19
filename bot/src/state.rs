@@ -1,26 +1,73 @@
 // bot/src/state.rs
 
 // --- Imports ---
-use crate::bindings::{AerodromePool, UniswapV3Pool, VelodromeV2Pool};
-use crate::config::Config;
+use crate::{
+    bindings::{AerodromePool, UniswapV3Pool, VelodromeV2Pool, // UniswapV3Pool is the contract struct
+        // Assuming abigen created a module like `i_uniswap_v3_pool` for the contract
+        // if the contract name in abigen! was IUniswapV3Pool.
+        // Or if the contract name was UniswapV3Pool and it generated `uniswap_v3_pool_contract` module.
+        // Given the error "no Slot0Output in bindings::uniswap_v3_pool",
+        // it implies `uniswap_v3_pool` is a module.
+        // Let's try to be very specific if the contract is named IUniswapV3Pool in abigen
+        i_uniswap_v3_pool::Slot0Output, // Trying this path
+    },
+    config::Config,
+    transaction::NonceManager,
+};
 use dashmap::DashMap;
 use ethers::{
-    prelude::*, // Add prelude for common types/traits
-    types::{Address, U256, U64},
+    core::types::{Address, U256},
+    middleware::SignerMiddleware,
+    providers::{Http, Provider}, 
+    signers::LocalWallet, // Removed unused Signer import
 };
-// FIX E0599: Import WrapErr trait
 use eyre::{eyre, Result, WrapErr};
-use std::{str::FromStr, sync::Arc};
-use tokio::time::{timeout, Duration};
-// FIX Warning: Removed debug
-use tracing::{error, info, instrument, trace, warn};
+// use futures_util::TryFutureExt; // Marked as unused in last log
+use std::sync::Arc;
+use std::str::FromStr;
+use tokio::time::Duration; 
+use tracing::instrument;
 
-// --- Enums / Structs ---
+#[derive(Debug, Clone)]
+pub struct PoolState {
+    pub pool_address: Address,
+    pub dex_type: DexType,
+    pub token0: Address,
+    pub token1: Address,
+    pub factory: Option<Address>, // Renamed from factory_address
+    // Fields like reserve0, reserve1, sqrt_price_x96, tick were causing E0560,
+    // implying they are not part of PoolState. They are in PoolSnapshot.
+    // If they are needed in PoolState, the struct definition must be updated.
+    // For now, assuming they are not in PoolState based on the error "available fields are: factory".
+    // This means the assignments to these fields in fetch_and_cache_pool_state for PoolState were incorrect.
+    pub uni_fee: Option<u32>, // Changed from U256 to u32 based on E0308
+    pub velo_stable: Option<bool>,
+    pub t0_is_weth: Option<bool>,
+    // last_update_block was also causing E0560 for PoolState.
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PoolSnapshot {
+    pub pool_address: Address,
+    pub dex_type: DexType,
+    pub token0: Address,
+    pub token1: Address,
+    pub reserve0: Option<U256>,
+    pub reserve1: Option<U256>,
+    pub sqrt_price_x96: Option<U256>, // For UniV3
+    pub tick: Option<i32>,            // For UniV3
+    // pub uni_fee: Option<U256>, // Field not found in error E0560, assuming removed or moved to PoolState
+    // pub velo_stable: Option<bool>, // Field not found in error E0560
+    // pub t0_is_weth: Option<bool>, // Field not found in error E0560
+    pub last_update_block: Option<U256>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DexType {
     UniswapV3,
     VelodromeV2,
     Aerodrome,
+    #[allow(dead_code)]
     Unknown,
 }
 impl DexType {
@@ -35,175 +82,266 @@ impl std::fmt::Display for DexType {
 }
 impl FromStr for DexType {
     type Err = eyre::Report;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "univ3" | "uniswapv3" => Ok(DexType::UniswapV3),
-            "velov2" | "velodrome" | "velodromev2" => Ok(DexType::VelodromeV2),
-            "aero" | "aerodrome" => Ok(DexType::Aerodrome),
-            _ => Err(eyre!("Unknown DEX: {}", s)),
+            "uniswapv3" | "univ3" => Ok(DexType::UniswapV3),
+            "velodrome" | "velov2" => Ok(DexType::VelodromeV2),
+            "aerodrome" | "aero" => Ok(DexType::Aerodrome),
+            _ => Err(eyre!("Unknown DEX type string: {}", s)),
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct PoolState {
-    pub pool_address: Address,
-    pub dex_type: DexType,
-    pub token0: Address,
-    pub token1: Address,
-    pub uni_fee: Option<u32>,
-    pub velo_stable: Option<bool>,
-    pub t0_is_weth: Option<bool>,
+impl Default for DexType {
+    fn default() -> Self {
+        DexType::Unknown // Or UniswapV3, or whatever makes sense as a default
+    }
 }
-#[derive(Debug, Clone)]
-pub struct PoolSnapshot {
-    pub pool_address: Address,
-    pub dex_type: DexType,
-    pub token0: Address,
-    pub token1: Address,
-    pub reserve0: Option<U256>,
-    pub reserve1: Option<U256>,
-    pub sqrt_price_x96: Option<U256>,
-    pub tick: Option<i32>,
-    pub last_update_block: Option<U64>,
-}
+
 #[derive(Debug, Clone)]
 pub struct AppState {
     pub config: Config,
+    pub client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
+    pub http_provider: Arc<Provider<Http>>,
     pub pool_states: Arc<DashMap<Address, PoolState>>,
     pub pool_snapshots: Arc<DashMap<Address, PoolSnapshot>>,
-    pub weth_address: Address,
-    pub usdc_address: Address,
-    pub weth_decimals: u8,
-    pub usdc_decimals: u8,
-    pub velo_router_addr: Option<Address>,
-    pub aero_router_addr: Option<Address>,
-    pub uni_quoter_addr: Option<Address>,
+    pub nonce_manager: Arc<NonceManager>,
+    #[cfg(feature = "local_simulation")]
+    pub test_arb_check_triggered: bool,
 }
 
-// --- AppState Impl ---
 impl AppState {
-    pub fn new(config: Config) -> Self {
+    pub fn new(
+        config: Config,
+        client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
+        http_provider: Arc<Provider<Http>>,
+        nonce_manager: Arc<NonceManager>, // Added NonceManager to constructor
+    ) -> Self {
         Self {
-            weth_address: config.weth_address,
-            usdc_address: config.usdc_address,
-            weth_decimals: config.weth_decimals,
-            usdc_decimals: config.usdc_decimals,
-            velo_router_addr: Some(config.velo_router_addr),
-            aero_router_addr: config.aerodrome_router_addr,
-            uni_quoter_addr: Some(config.quoter_v2_address),
             config,
-            pool_states: Default::default(),
-            pool_snapshots: Default::default(),
+            client,
+            http_provider,
+            pool_states: Arc::new(DashMap::new()),
+            pool_snapshots: Arc::new(DashMap::new()),
+            nonce_manager,
+            #[cfg(feature = "local_simulation")]
+            test_arb_check_triggered: false,
         }
     }
+
     pub fn target_pair(&self) -> Option<(Address, Address)> {
-        if !self.weth_address.is_zero() && !self.usdc_address.is_zero() {
-            if self.weth_address < self.usdc_address {
-                Some((self.weth_address, self.usdc_address))
-            } else {
-                Some((self.usdc_address, self.weth_address))
-            }
+        // Assuming Config struct has a method or logic to determine the target pair
+        // If target_pair is defined directly on Config, self.config.target_pair() is correct.
+        // If it's based on weth_address and usdc_address from config:
+        if self.config.weth_address != Address::zero() && self.config.usdc_address != Address::zero() {
+            Some((self.config.weth_address, self.config.usdc_address))
         } else {
-            warn!("WETH/USDC zero");
             None
         }
     }
 }
 
-// --- Helper Functions ---
-#[instrument(skip_all, fields(pool=%pool_addr, dex=?dex_type), level="info")]
-pub async fn fetch_and_cache_pool_state(
-    pool_addr: Address,
-    dex_type: DexType, // is Copy now
-    client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
-    app_state: Arc<AppState>,
-) -> Result<()> {
-    info!("Fetching state...");
-    let weth_addr = app_state.weth_address;
-    let timeout_dur = Duration::from_secs(app_state.config.fetch_timeout_secs.unwrap_or(15));
+impl Default for AppState {
+    fn default() -> Self {
+        let config = Config::default();
+        // Ensure `rand = "0.8.5"` is in Cargo.toml for this to work
+        let wallet = LocalWallet::new(&mut rand::thread_rng());
+        // let wallet_pk_hex = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+        // let wallet = LocalWallet::from_str(wallet_pk_hex)
+        //     .expect("Failed to create default wallet from PK")
+        //     .with_chain_id(config.chain_id.unwrap_or(1u64)); // Provide default if Option is None
 
-    // Define the async block that performs the fetches
-    let fetch_logic = async {
-        match dex_type {
-            DexType::UniswapV3 => {
-                let pool = UniswapV3Pool::new(pool_addr, client.clone());
-                let slot0_call = pool.slot_0();
-                let token0_call = pool.token_0();
-                let token1_call = pool.token_1();
-                let fee_call = pool.fee();
-                let slot0_fut = slot0_call.call();
-                let token0_fut = token0_call.call();
-                let token1_fut = token1_call.call();
-                let fee_fut = fee_call.call();
-                let (slot0_res, token0_res, token1_res, fee_res) =
-                    tokio::try_join!(slot0_fut, token0_fut, token1_fut, fee_fut)?;
-                let (sqrtp_u160, tick, ..) = slot0_res;
-                let (t0, t1, f) = (token0_res, token1_res, fee_res);
-                let is_t0_weth = t0 == weth_addr;
-                let sqrtp = U256::from(sqrtp_u160);
-                let ps = PoolState { pool_address: pool_addr, dex_type, token0: t0, token1: t1, uni_fee: Some(f), velo_stable: None, t0_is_weth: Some(is_t0_weth) };
-                let sn = PoolSnapshot { pool_address: pool_addr, dex_type, token0: t0, token1: t1, reserve0: None, reserve1: None, sqrt_price_x96: Some(sqrtp), tick: Some(tick), last_update_block: None };
-                Ok((ps, sn))
-            }
-            DexType::VelodromeV2 | DexType::Aerodrome => {
-                let (reserves_call, token0_call, token1_call, stable_call) =
-                    if dex_type == DexType::VelodromeV2 {
-                        let p = VelodromeV2Pool::new(pool_addr, client.clone());
-                        (p.get_reserves(), p.token_0(), p.token_1(), p.stable())
-                    } else {
-                        let p = AerodromePool::new(pool_addr, client.clone());
-                        (p.get_reserves(), p.token_0(), p.token_1(), p.stable())
-                    };
+        let provider = Provider::<Http>::try_from(config.http_rpc_url.clone()).expect("Failed to connect to HTTP provider for default AppState");
+        let client = Arc::new(SignerMiddleware::new(provider.clone(), wallet));
+        let http_provider = Arc::new(provider);
+        
+        let nonce_manager = Arc::new(NonceManager::new(client.address()));
 
-                let reserves_fut = reserves_call.call();
-                let token0_fut = token0_call.call();
-                let token1_fut = token1_call.call();
-                let stable_fut = stable_call.call();
 
-                let (r, t0, t1, s) =
-                    tokio::try_join!(reserves_fut, token0_fut, token1_fut, stable_fut)?;
-                // FIX E0308: Use correct tuple type based on ABI (uint256, uint256, uint256)
-                let (r0, r1, _block_timestamp_last): (U256, U256, U256) = r;
-                let is_t0_weth = t0 == weth_addr;
-                let ps = PoolState { pool_address: pool_addr, dex_type, token0: t0, token1: t1, uni_fee: None, velo_stable: Some(s), t0_is_weth: Some(is_t0_weth) };
-                let sn = PoolSnapshot { pool_address: pool_addr, dex_type, token0: t0, token1: t1, reserve0: Some(r0), reserve1: Some(r1), sqrt_price_x96: None, tick: None, last_update_block: None };
-                Ok((ps, sn))
-            }
-            DexType::Unknown => Err(eyre!("Cannot fetch state for Unknown DEX type")),
-        }
-    };
-
-    match timeout(timeout_dur, fetch_logic).await {
-        Ok(Ok((ps, sn))) => {
-            info!("State fetched successfully.");
-            trace!(?ps, ?sn);
-            app_state.pool_states.insert(pool_addr, ps);
-            app_state.pool_snapshots.insert(pool_addr, sn);
-            Ok(())
-        }
-        Ok(Err(e)) => {
-            error!(pool = %pool_addr, error = ?e, "Fetch state failed");
-            // FIX E0599: Use eyre::WrapErr trait method correctly
-            Err(e).wrap_err("Pool state fetch logic failed")
-        }
-        Err(_) => {
-            error!(pool = %pool_addr, "Fetch state timeout");
-            Err(eyre!(
-                "Timeout fetching pool state for {}",
-                pool_addr
-            ))
+        Self {
+            config,
+            client,
+            http_provider,
+            pool_states: Arc::new(DashMap::new()),
+            pool_snapshots: Arc::new(DashMap::new()),
+            nonce_manager,
+            #[cfg(feature = "local_simulation")]
+            test_arb_check_triggered: false,
         }
     }
 }
 
-pub fn is_target_pair_option(
-    a0: Address,
-    a1: Address,
-    target: Option<(Address, Address)>,
-) -> bool {
-    match target {
-        Some((ta, tb)) => (a0 == ta && a1 == tb) || (a0 == tb && a1 == ta),
+/// Fetches the detailed state for a given pool and caches it.
+#[instrument(skip_all, fields(pool=%pool_addr, dex=?dex_type), level="info")]
+pub async fn fetch_and_cache_pool_state(
+    pool_addr: Address,
+    dex_type: DexType,
+    factory_address: Address,
+    rpc_client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
+    app_state: Arc<AppState>,
+) -> Result<()> {
+    let mut r0 = U256::zero();
+    let mut r1 = U256::zero();
+    let mut t0 = Address::zero();
+    let mut t1 = Address::zero();
+    let mut s_res = false;
+    let mut fee_res_u32 = 0u32; // For UniV3 fee, type u32
+
+    match dex_type {
+        DexType::UniswapV3 => {
+            let pool_contract = UniswapV3Pool::new(pool_addr, rpc_client.clone());
+            // Fetch token0, token1, fee, and slot0 concurrently
+            let (t0_res, t1_res, fee_res, slot0_data): (Address, Address, u32, Slot0Output) = tokio::try_join!(
+                pool_contract.token_0().call(),
+                pool_contract.token_1().call(),
+                pool_contract.fee().call(),
+                pool_contract.slot_0().call() // This returns Slot0Output directly
+            )
+            .wrap_err_with(|| format!("Failed to fetch UniswapV3 pool details for {}", pool_addr))?;
+
+            t0 = t0_res;
+            t1 = t1_res;
+            fee_res_u32 = fee_res;
+            let sqrt_price_x96_val = slot0_data.sqrt_price_x96; // Accessing the sqrt_price_x96 field from Slot0Output
+            let tick_val = slot0_data.tick; // Accessing the tick field from Slot0Output
+
+            r0 = sqrt_price_x96_val; // Store sqrt_price_x96 for snapshot
+            // r1 = tick_val.into(); // tick is i32, not directly convertible to U256 for r1. Snapshot has separate tick field.
+
+            let weth_addr = app_state.config.weth_address;
+            let is_t0_weth = t0 == weth_addr;
+
+            let pool_state = PoolState {
+                pool_address: pool_addr,
+                dex_type,
+                token0: t0,
+                token1: t1,
+                factory: Some(factory_address),
+                uni_fee: Some(fee_res_u32),
+                velo_stable: None,
+                t0_is_weth: Some(is_t0_weth),
+                // Removed fields not in PoolState: reserve0, reserve1, sqrt_price_x96, tick, last_update_block
+            };
+            let pool_snapshot = PoolSnapshot {
+                pool_address: pool_addr,
+                dex_type,
+                token0: t0,
+                token1: t1,
+                reserve0: None, // UniV3 snapshots don't use reserves directly here
+                reserve1: None,
+                sqrt_price_x96: Some(sqrt_price_x96_val),
+                tick: Some(tick_val),
+                last_update_block: None,
+            };
+            app_state.pool_states.insert(pool_addr, pool_state);
+            app_state.pool_snapshots.insert(pool_addr, pool_snapshot);
+            Ok(())
+        }
+        DexType::VelodromeV2 | DexType::Aerodrome => {
+            let mut success = false;
+            let mut attempts = 0;
+            let max_attempts = 3;
+            let call_delay = Duration::from_millis(200);
+
+            while !success && attempts < max_attempts {
+                attempts += 1;
+                let client = rpc_client.clone();
+
+                #[cfg(feature = "local_simulation")]
+                {
+                    let (rsv0_sim, rsv1_sim, _) = if dex_type == DexType::VelodromeV2 {
+                        VelodromeV2Pool::new(pool_addr, client.clone()).get_reserves().call().await.map_err(|e| eyre!(e))?
+                    } else {
+                        AerodromePool::new(pool_addr, client.clone()).get_reserves().call().await.map_err(|e| eyre!(e))?
+                    };
+                    r0 = rsv0_sim;
+                    r1 = rsv1_sim;
+                    t0 = if dex_type == DexType::VelodromeV2 {
+                        VelodromeV2Pool::new(pool_addr, client.clone()).token_0().call().await.map_err(|e| eyre!(e))?
+                    } else {
+                        AerodromePool::new(pool_addr, client.clone()).token_0().call().await.map_err(|e| eyre!(e))?
+                    };
+                    t1 = if dex_type == DexType::VelodromeV2 {
+                        VelodromeV2Pool::new(pool_addr, client.clone()).token_1().call().await.map_err(|e| eyre!(e))?
+                    } else {
+                        AerodromePool::new(pool_addr, client.clone()).token_1().call().await.map_err(|e| eyre!(e))?
+                    };
+                    s_res = if dex_type == DexType::VelodromeV2 {
+                        VelodromeV2Pool::new(pool_addr, client.clone()).stable().call().await.map_err(|e| eyre!(e))?
+                    } else {
+                        AerodromePool::new(pool_addr, client.clone()).stable().call().await.map_err(|e| eyre!(e))?
+                    };
+                    success = true;
+                }
+                #[cfg(not(feature = "local_simulation"))]
+                {
+                    let (rsv0_live, rsv1_live, _) = if dex_type == DexType::VelodromeV2 {
+                        VelodromeV2Pool::new(pool_addr, client.clone()).get_reserves().call().await.map_err(|e| eyre!(e))?
+                    } else {
+                        AerodromePool::new(pool_addr, client.clone()).get_reserves().call().await.map_err(|e| eyre!(e))?
+                    };
+                    r0 = rsv0_live;
+                    r1 = rsv1_live;
+                    tokio::time::sleep(call_delay).await; // Use tokio::time::sleep
+                    t0 = if dex_type == DexType::VelodromeV2 { VelodromeV2Pool::new(pool_addr, client.clone()).token_0().call().await.map_err(|e| eyre!(e))? } else { AerodromePool::new(pool_addr, client.clone()).token_0().call().await.map_err(|e| eyre!(e))? };
+                    tokio::time::sleep(call_delay).await; // Use tokio::time::sleep
+                    t1 = if dex_type == DexType::VelodromeV2 { VelodromeV2Pool::new(pool_addr, client.clone()).token_1().call().await.map_err(|e| eyre!(e))? } else { AerodromePool::new(pool_addr, client.clone()).token_1().call().await.map_err(|e| eyre!(e))? };
+                    tokio::time::sleep(call_delay).await; // Use tokio::time::sleep
+                    s_res = if dex_type == DexType::VelodromeV2 { VelodromeV2Pool::new(pool_addr, client.clone()).stable().call().await.map_err(|e| eyre!(e))? } else { AerodromePool::new(pool_addr, client.clone()).stable().call().await.map_err(|e| eyre!(e))? };
+                    success = true;
+                }
+            }
+
+            if !success {
+                return Err(eyre!(
+                    "Failed to fetch Velo/Aero pool details after {} attempts for {}",
+                    max_attempts,
+                    pool_addr
+                ));
+            }
+
+            let weth_addr = app_state.config.weth_address;
+            let is_t0_weth = t0 == weth_addr;
+
+            let pool_state = PoolState {
+                pool_address: pool_addr,
+                dex_type,
+                token0: t0,
+                token1: t1,
+                factory: Some(factory_address),
+                // Removed fields not in PoolState: reserve0, reserve1, sqrt_price_x96, tick
+                uni_fee: None,
+                velo_stable: Some(s_res),
+                t0_is_weth: Some(is_t0_weth),
+                // Removed last_update_block
+            };
+            let pool_snapshot = PoolSnapshot {
+                pool_address: pool_addr,
+                dex_type,
+                token0: t0,
+                token1: t1,
+                reserve0: Some(r0),
+                reserve1: Some(r1),
+                sqrt_price_x96: None,
+                tick: None,
+                // Removed fields not present in PoolSnapshot based on E0560
+                // uni_fee: None, 
+                // velo_stable: Some(s_res), 
+                // t0_is_weth: Some(is_t0_weth),
+                last_update_block: None,
+            };
+            app_state.pool_states.insert(pool_addr, pool_state);
+            app_state.pool_snapshots.insert(pool_addr, pool_snapshot);
+            Ok(())
+        }
+        DexType::Unknown => Err(eyre!("Cannot fetch state for Unknown DEX type")),
+    }
+}
+
+pub fn is_target_pair_option(token0: Address, token1: Address, target_pair_opt: Option<(Address, Address)>) -> bool {
+    match target_pair_opt {
+        Some((ta, tb)) => (token0 == ta && token1 == tb) || (token0 == tb && token1 == ta),
         None => true,
     }
 }
