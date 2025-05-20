@@ -1,9 +1,4 @@
 ULP 1.5 Arbitrage Bot - Project Transfer. Study attached all_files_combined.txt
-Note prompt.md, z1.1.md
+Note prompt.md
 All other file references in attached doc scan and deeply research. 
-Next steps should be Anvil setup
-z1.1 go
-
-Fix simulation.rs macro issues, type errors, and missing field lookups.
-Fix state.rs borrow checker errors.
-Fix main.rs and event_handler.rs function call arguments.
+j9 go

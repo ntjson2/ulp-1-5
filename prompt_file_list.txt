@@ -1,10 +1,12 @@
 /bot/src/
 /abis/
 /contracts/
+/tests/
 Cargo.toml
+p1_loop.sh
+run_me.sh
+results.txt
 README.md
-j9.md
-z1.1.md
 PROJECT_FEASIBILITY.md
 prompt.md
 .env

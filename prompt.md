@@ -64,6 +64,14 @@ All development **must** follow one of the two protocols defined below:
 
 ---
 
+### 4.3. post `j9/z1.1` Protocol (logging)
+
+*   **Purpose:** Append to a log for AI and human review history
+*   **Trigger:** User provides the complete compiler error output and the command **`j9 go`** or **`z1.1 go`**.
+*   **Action:** Analyze errors or tasks and append them for AI and humans to track project history. Keep the appended items concentrated (1-2 lines), add a date and time along with a unique log entry id.
+
+---
+
 ## 5. Current Project Status (as of transfer)
 
 *   **Core Logic:** Implemented for state management (`state.rs`), event handling (`event_handler.rs`), pathfinding (`path_optimizer.rs`), simulation (`simulation.rs`), and transaction submission/monitoring (`transaction.rs`). Supports UniV3 and Velo/Aero style pools.
