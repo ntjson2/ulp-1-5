@@ -1,4 +1,7 @@
-ULP 1.5 Arbitrage Bot - Project Transfer. Study attached all_files_combined.txt
-Note prompt.md
+5.20.25 - ULP 1.5 Arbitrage Bot - Project Transfer. Study attached all_files_combined.txt
+Note prompt.md, Networking 1.1 in PROJECT_FEASIBILITY.md along with other items in that file.
+Note 4.3. post `j9/z1.1` Protocol (logging), j9, z1.1 and run_me.sh for prompts and commands that I commonly use.
+Don't forget to add into PROJECT_FEASIBILITY.md Use a WebSocket provider for real-time event subscriptions and for testing.
 All other file references in attached doc scan and deeply research. 
+Here is the first results.txt output...
 j9 go

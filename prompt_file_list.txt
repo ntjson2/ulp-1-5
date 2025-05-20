@@ -5,7 +5,7 @@
 Cargo.toml
 p1_loop.sh
 run_me.sh
-results.txt
+LOG.md
 README.md
 PROJECT_FEASIBILITY.md
 prompt.md

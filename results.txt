@@ -2,10 +2,15 @@
 ⏳ Waiting for Anvil RPC at http://127.0.0.1:8545...
 ./run_me.sh: connect: Connection refused
 ./run_me.sh: line 32: /dev/tcp/127.0.0.1/8545: Connection refused
+./run_me.sh: connect: Connection refused
+./run_me.sh: line 32: /dev/tcp/127.0.0.1/8545: Connection refused
+./run_me.sh: connect: Connection refused
+./run_me.sh: line 32: /dev/tcp/127.0.0.1/8545: Connection refused
 ✅ Anvil is ready.
 🚀 Deploying ArbitrageExecutor …
 ✅ ArbitrageExecutor deployed to 0x8e45c0936fa1a65bdad3222befec6a03c83372ce
 🧪 Running integration tests …
+   Compiling ulp1_5 v0.1.0 (/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5)
 warning: unused import: `Bytes`
   --> bot/src/simulation.rs:20:22
    |
@@ -16,99 +21,16 @@ warning: unused import: `Bytes`
 
 warning: `ulp1_5` (lib) generated 1 warning (run `cargo fix --lib -p ulp1_5` to apply 1 suggestion)
 warning: `ulp1_5` (lib test) generated 1 warning (1 duplicate)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 20.67s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9m 36s
      Running unittests bot/src/lib.rs (target/debug/deps/ulp1_5-6137df622e508cfd)
 
 running 0 tests
 
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
      Running unittests bot/src/main.rs (target/debug/deps/ulp1_5-cebcf19778b65536)
 
-running 0 tests
+🛑 Shutting down anvil (pid 3112)…
 
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-     Running tests/integration_test.rs (target/debug/deps/integration_test-d1d845ab162d7030)
-
-running 4 tests
-test test_full_arbitrage_cycle_simulation ... [2m2025-05-20T18:04:46.906095Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m29:[0m Test tracing initialized.
-[2m2025-05-20T18:04:46.907100Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m215:[0m --- Running Test: test_full_arbitrage_cycle_simulation ---
-[2m2025-05-20T18:04:46.968756Z[0m [32m INFO[0m [1msim_setup[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m74:[0m Setting up simulation environment...
-[2m2025-05-20T18:04:48.231473Z[0m [32m INFO[0m [1msim_setup[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m93:[0m Connected to Anvil (Chain ID: 10, Wallet: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266)
-[2m2025-05-20T18:04:48.232374Z[0m [32m INFO[0m [1msim_setup[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m96:[0m Deploying Executor contract via Anvil...
-[2m2025-05-20T18:04:55.602419Z[0m [32m INFO[0m [1msim_setup[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m112:[0m ✅ Executor deployed to Anvil at: 0xbee6ffc1e8627f51ccdf0b4399a1e1abc5165f15
-[2m2025-05-20T18:04:55.603742Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m225:[0m Anvil Setup Complete. Executor: 0xbee6ffc1e8627f51ccdf0b4399a1e1abc5165f15
-[2m2025-05-20T18:04:55.618954Z[0m [32m INFO[0m [2mulp1_5::config[0m[2m:[0m [2m115:[0m Loading configuration...
-[2m2025-05-20T18:04:55.660127Z[0m [32m INFO[0m [2mulp1_5::config[0m[2m:[0m [2m168:[0m ✅ Config loaded.
-[2m2025-05-20T18:04:55.661341Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m233:[0m Using Test Pools: A (UniV3)=0x8514…08ef, B (VeloV2 Stable)=0x207a…6488
-[2m2025-05-20T18:04:55.662240Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m250:[0m Constructed Manual Route Candidate: RouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x207addb05c548f262219f6b50eadff8640ed6488, buy_dex_type: UniswapV3, sell_dex_type: VelodromeV2, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: None, buy_pool_stable: None, sell_pool_stable: Some(true), buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x25cbddb98b35ab1ff795324516342fac4845718f, zero_for_one_a: true, estimated_profit_usd: 0.1 }
-[2m2025-05-20T18:04:55.687068Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m254:[0m Fetched Anvil gas price (prio): 0.01 gwei
-[2m2025-05-20T18:04:55.688802Z[0m [32m INFO[0m [1mfind_optimal_loan_amount[0m[1m{[0m[3mroute[0m[2m=[0mRouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x207addb05c548f262219f6b50eadff8640ed6488, buy_dex_type: UniswapV3, sell_dex_type: VelodromeV2, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: None, buy_pool_stable: None, sell_pool_stable: Some(true), buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x25cbddb98b35ab1ff795324516342fac4845718f, zero_for_one_a: true, estimated_profit_usd: 0.1 }[1m}[0m[2m:[0m [2mulp1_5::simulation[0m[2m:[0m [2m227:[0m Searching optimal loan amount...
-[2m2025-05-20T18:04:55.703954Z[0m [33m WARN[0m [1mfind_optimal_loan_amount[0m[1m{[0m[3mroute[0m[2m=[0mRouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x207addb05c548f262219f6b50eadff8640ed6488, buy_dex_type: UniswapV3, sell_dex_type: VelodromeV2, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: None, buy_pool_stable: None, sell_pool_stable: Some(true), buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x25cbddb98b35ab1ff795324516342fac4845718f, zero_for_one_a: true, estimated_profit_usd: 0.1 }[1m}[0m[2m:[0m [2mulp1_5::simulation[0m[2m:[0m [2m279:[0m Buy pool snapshot missing, cannot apply dynamic sizing based on pool depth. Using configured max loan.
-[2m2025-05-20T18:04:55.705437Z[0m [32m INFO[0m [1mfind_optimal_loan_amount[0m[1m{[0m[3mroute[0m[2m=[0mRouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x207addb05c548f262219f6b50eadff8640ed6488, buy_dex_type: UniswapV3, sell_dex_type: VelodromeV2, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: None, buy_pool_stable: None, sell_pool_stable: Some(true), buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x25cbddb98b35ab1ff795324516342fac4845718f, zero_for_one_a: true, estimated_profit_usd: 0.1 }[1m}[0m[2m:[0m [2mulp1_5::simulation[0m[2m:[0m [2m233:[0m Max loan amount limits (WETH) [3mconfig_max_weth[0m[2m=[0m1.0 [3mdynamic_max_weth[0m[2m=[0m"1.0000"
-[2m2025-05-20T18:04:55.706791Z[0m [32m INFO[0m [1mfind_optimal_loan_amount[0m[1m{[0m[3mroute[0m[2m=[0mRouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x207addb05c548f262219f6b50eadff8640ed6488, buy_dex_type: UniswapV3, sell_dex_type: VelodromeV2, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: None, buy_pool_stable: None, sell_pool_stable: Some(true), buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x25cbddb98b35ab1ff795324516342fac4845718f, zero_for_one_a: true, estimated_profit_usd: 0.1 }[1m}[0m[2m:[0m [2mulp1_5::simulation[0m[2m:[0m [2m237:[0m Starting optimal loan search... [3msearch_range_weth[0m[2m=[0m"0.1000 - 1.0000" [3miterations[0m[2m=[0m1
-[2m2025-05-20T18:05:03.027679Z[0m [33m WARN[0m [2mulp1_5::simulation[0m[2m:[0m [2m78:[0m LOCAL SIMULATION: Attempting VelodromeV2 simulate_swap with IMPL address (0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858) due to Anvil proxy issues.
-[2m2025-05-20T18:05:03.857510Z[0m [33m WARN[0m [2mulp1_5::simulation[0m[2m:[0m [2m114:[0m LOCAL SIMULATION FALLBACK: Velodrome IMPL call reverted with PairDoesNotExist. Estimating output.
-[2m2025-05-20T18:05:03.858107Z[0m [33m WARN[0m [2mulp1_5::simulation[0m[2m:[0m [2m137:[0m Using ESTIMATED output for local sim due to IMPL call revert/failure. [3mamount_in[0m[2m=[0m1370743045 [3msimulated_out[0m[2m=[0m684685
-[2m2025-05-20T18:05:03.859078Z[0m [32m INFO[0m [1mfind_optimal_loan_amount[0m[1m{[0m[3mroute[0m[2m=[0mRouteCandidate { buy_pool_addr: 0x851492574065ede975391e141377067943aa08ef, sell_pool_addr: 0x207addb05c548f262219f6b50eadff8640ed6488, buy_dex_type: UniswapV3, sell_dex_type: VelodromeV2, token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, buy_pool_fee: Some(500), sell_pool_fee: None, buy_pool_stable: None, sell_pool_stable: Some(true), buy_pool_factory: 0x1f98431c8ad98523631ae4a59f267346ea31f984, sell_pool_factory: 0x25cbddb98b35ab1ff795324516342fac4845718f, zero_for_one_a: true, estimated_profit_usd: 0.1 }[1m}[0m[2m:[0m [2mulp1_5::simulation[0m[2m:[0m [2m249:[0m No profitable loan amount found within the search range.
-[2m2025-05-20T18:05:03.859937Z[0m [33m WARN[0m [2mintegration_test[0m[2m:[0m [2m276:[0m ❌ No profitable loan amount found during simulation. This is likely because the underlying Velo simulation in `simulate_swap` still uses the proxy address and hits the Anvil proxy issue. Aborting cycle test.
-ok
-test test_huff_direct_call ... [2m2025-05-20T18:05:03.864509Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m325:[0m --- Running Test: test_huff_direct_call ---
-[2m2025-05-20T18:05:03.865281Z[0m [32m INFO[0m [1msim_setup[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m74:[0m Setting up simulation environment...
-[2m2025-05-20T18:05:03.873514Z[0m [32m INFO[0m [1msim_setup[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m93:[0m Connected to Anvil (Chain ID: 10, Wallet: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266)
-[2m2025-05-20T18:05:03.874161Z[0m [32m INFO[0m [1msim_setup[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m96:[0m Deploying Executor contract via Anvil...
-[2m2025-05-20T18:05:11.123700Z[0m [32m INFO[0m [1msim_setup[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m112:[0m ✅ Executor deployed to Anvil at: 0xc32609c91d6b6b51d48f2611308fef121b02041f
-[2m2025-05-20T18:05:11.124822Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m330:[0m Attempting direct call to Huff contract (e.g., withdraw - requires funds)
-[2m2025-05-20T18:05:11.126040Z[0m [33m WARN[0m [2mintegration_test[0m[2m:[0m [2m334:[0m Withdraw test requires the executor contract (0xc32609c91d6b6b51d48f2611308fef121b02041f) to hold WETH on the Anvil fork.
-[2m2025-05-20T18:05:11.147592Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m338:[0m Withdraw tx sent: 0x783d8d9a967b2298cba764ebab8fdd5cff0668e39785bb23306cb8ce1681f511. Waiting for confirmation...
-[2m2025-05-20T18:05:18.155993Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m341:[0m ✅ Withdraw call confirmed. Receipt: TransactionReceipt { transaction_hash: 0x783d8d9a967b2298cba764ebab8fdd5cff0668e39785bb23306cb8ce1681f511, transaction_index: 0, block_hash: Some(0x9ce81f92b426e7692125339e983f36fc415f15689340d9f382472a22b249b22d), block_number: Some(136082743), from: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266, to: Some(0xc32609c91d6b6b51d48f2611308fef121b02041f), cumulative_gas_used: 21584, gas_used: Some(21584), contract_address: None, logs: [], status: Some(1), root: None, logs_bloom: 0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000, transaction_type: Some(0), effective_gas_price: Some(1000008530), other: OtherFields { inner: {"blobGasPrice": String("0x1")} } }
-ok
-test test_setup ... [2m2025-05-20T18:05:18.162128Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m43:[0m --- Running Test: test_setup ---
-[2m2025-05-20T18:05:18.163370Z[0m [32m INFO[0m [1msim_setup[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m74:[0m Setting up simulation environment...
-[2m2025-05-20T18:05:18.175733Z[0m [32m INFO[0m [1msim_setup[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m93:[0m Connected to Anvil (Chain ID: 10, Wallet: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266)
-[2m2025-05-20T18:05:18.176806Z[0m [32m INFO[0m [1msim_setup[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m96:[0m Deploying Executor contract via Anvil...
-[2m2025-05-20T18:05:25.435422Z[0m [32m INFO[0m [1msim_setup[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m112:[0m ✅ Executor deployed to Anvil at: 0x10e38ee9dd4c549b61400fc19347d00ed3edafc4
-[2m2025-05-20T18:05:25.437221Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m45:[0m ✅ Simulation environment setup successful.
-[2m2025-05-20T18:05:25.437917Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m47:[0m Executor address presence check passed.
-[2m2025-05-20T18:05:25.438461Z[0m [32m INFO[0m [2mulp1_5::config[0m[2m:[0m [2m115:[0m Loading configuration...
-[2m2025-05-20T18:05:25.446224Z[0m [32m INFO[0m [2mulp1_5::config[0m[2m:[0m [2m168:[0m ✅ Config loaded.
-[2m2025-05-20T18:05:25.446746Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m54:[0m Attempting a direct call to QuoterV2 on Anvil...
-[2m2025-05-20T18:05:25.448117Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m67:[0m Calling QuoterV2 (0x61ff…b21e) with params: QuoteExactInputSingleParams { token_in: 0x4200000000000000000000000000000000000006, token_out: 0x7f5c764cbc14f9669b88837ca1490cca17c31607, amount_in: 1000000000000000000, fee: 500, sqrt_price_limit_x96: 0 }
-[2m2025-05-20T18:05:28.634088Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m70:[0m ✅ Successfully called QuoterV2. Result: (2487959389, 3945272870766428487577965, 7, 237978)
-[2m2025-05-20T18:05:28.635626Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m80:[0m Attempting a direct call to VelodromeRouter IMPL on Anvil (using hardcoded address)...
-[2m2025-05-20T18:05:28.636549Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m89:[0m Using hardcoded IMPL address for local test: 0xa062…2858
-[2m2025-05-20T18:05:28.643848Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m101:[0m Checking pool_for with stable=true using IMPL address 0xa062…2858...
-[2m2025-05-20T18:05:28.650346Z[0m [31mERROR[0m [2mintegration_test[0m[2m:[0m [2m114:[0m ❌ pool_for check failed unexpectedly on IMPL: Revert(Bytes(0x9a73ab46))
-Error: Contract call reverted with data: 0x9a73ab46
-
-Location:
-    tests/integration_test.rs:115:31
-FAILED
-test test_swap_triggers ... [2m2025-05-20T18:05:28.667134Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m151:[0m --- Running Test: test_swap_triggers ---
-[2m2025-05-20T18:05:28.668607Z[0m [32m INFO[0m [1msim_setup[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m74:[0m Setting up simulation environment...
-[2m2025-05-20T18:05:28.681991Z[0m [32m INFO[0m [1msim_setup[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m93:[0m Connected to Anvil (Chain ID: 10, Wallet: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266)
-[2m2025-05-20T18:05:28.683211Z[0m [32m INFO[0m [1msim_setup[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m96:[0m Deploying Executor contract via Anvil...
-[2m2025-05-20T18:05:35.972461Z[0m [32m INFO[0m [1msim_setup[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m112:[0m ✅ Executor deployed to Anvil at: 0xd753c12650c280383ce873cc3a898f6f53973d16
-[2m2025-05-20T18:05:35.973658Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m155:[0m Attempting to trigger UniV3 swap on pool: 0x8514…08ef
-[2m2025-05-20T18:05:35.975938Z[0m [32m INFO[0m [1mtrigger_v3_swap[0m[1m{[0m[3mrecipient[0m[2m=[0m0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 [3mzero_for_one[0m[2m=[0mtrue [3mamount_specified[0m[2m=[0m10000000000000000 [3msqrt_price_limit_x96[0m[2m=[0m0 [3mdata[0m[2m=[0mBytes(0x) [3mpool_addr[0m[2m=[0m0x8514…08ef[1m}[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m181:[0m Triggering V3 swap via Anvil... [3mrecipient[0m[2m=[0m0xf39f…2266 [3mzero_for_one[0m[2m=[0mtrue [3mamount_specified[0m[2m=[0m10000000000000000
-[2m2025-05-20T18:05:35.977245Z[0m [33m WARN[0m [1mtrigger_v3_swap[0m[1m{[0m[3mrecipient[0m[2m=[0m0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 [3mzero_for_one[0m[2m=[0mtrue [3mamount_specified[0m[2m=[0m10000000000000000 [3msqrt_price_limit_x96[0m[2m=[0m0 [3mdata[0m[2m=[0mBytes(0x) [3mpool_addr[0m[2m=[0m0x8514…08ef[1m}[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m182:[0m V3 swap trigger assumes prerequisites met AND ABI contains 'swap' function.
-[2m2025-05-20T18:05:36.422168Z[0m [32m INFO[0m [1mtrigger_v3_swap[0m[1m{[0m[3mrecipient[0m[2m=[0m0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 [3mzero_for_one[0m[2m=[0mtrue [3mamount_specified[0m[2m=[0m10000000000000000 [3msqrt_price_limit_x96[0m[2m=[0m0 [3mdata[0m[2m=[0mBytes(0x) [3mpool_addr[0m[2m=[0m0x8514…08ef[1m}[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m203:[0m V3 Swap transaction sent to Anvil. [3mtx_hash[0m[2m=[0m0xee6d…6102
-[2m2025-05-20T18:05:36.422536Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m172:[0m ✅ UniV3 swap triggered successfully: 0xee6d…6102
-[2m2025-05-20T18:05:36.422851Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m180:[0m Attempting to trigger VeloV2 swap on pool: 0x207a…6488
-[2m2025-05-20T18:05:36.427246Z[0m [32m INFO[0m [1mtrigger_v2_swap[0m[1m{[0m[3mamount0_out[0m[2m=[0m0 [3mamount1_out[0m[2m=[0m10000000 [3mto_address[0m[2m=[0m0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 [3mdata[0m[2m=[0mBytes(0x) [3mpool_addr[0m[2m=[0m0x207a…6488[1m}[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m154:[0m Triggering V2 swap via Anvil... [3mamount0_out[0m[2m=[0m0 [3mamount1_out[0m[2m=[0m10000000
-[2m2025-05-20T18:05:36.427496Z[0m [33m WARN[0m [1mtrigger_v2_swap[0m[1m{[0m[3mamount0_out[0m[2m=[0m0 [3mamount1_out[0m[2m=[0m10000000 [3mto_address[0m[2m=[0m0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 [3mdata[0m[2m=[0mBytes(0x) [3mpool_addr[0m[2m=[0m0x207a…6488[1m}[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m155:[0m V2 swap trigger assumes prerequisites (like token approvals if needed) are met in Anvil state.
-[2m2025-05-20T18:05:36.642312Z[0m [32m INFO[0m [1mtrigger_v2_swap[0m[1m{[0m[3mamount0_out[0m[2m=[0m0 [3mamount1_out[0m[2m=[0m10000000 [3mto_address[0m[2m=[0m0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 [3mdata[0m[2m=[0mBytes(0x) [3mpool_addr[0m[2m=[0m0x207a…6488[1m}[0m[2m:[0m [2mulp1_5::local_simulator[0m[2m:[0m [2m165:[0m V2 Swap transaction sent to Anvil. [3mtx_hash[0m[2m=[0m0x1a26…4508
-[2m2025-05-20T18:05:36.643220Z[0m [32m INFO[0m [2mintegration_test[0m[2m:[0m [2m195:[0m ✅ VeloV2 swap triggered successfully: 0x1a26…4508
-ok
-
-failures:
-
-failures:
-    test_setup
-
-test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 50.70s
-
-error: test failed, to rerun pass `--test integration_test`
-
-🛑 Shutting down anvil (pid 2770)…
+🛑 Shutting down anvil (pid 3112)…
+./run_me.sh: line 23: kill: (3112) - No such process

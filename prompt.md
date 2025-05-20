@@ -56,7 +56,7 @@ All development **must** follow one of the two protocols defined below:
 *   **Action:** Analyze errors, determine fixes for **all** reported errors in the batch.
 *   **Output:** Return the **complete contents** of **every file** modified (up to 10 files per response) to fix the errors.
 *   **Per-File Summary:** *After* the code block for *each* modified file, stop and provide:
-    *   `File Updated: [path/to/filename.ext]`
+    *   `File Updated: [path/to/filename.ext]`    
     *   `Task Summary: [Brief description of fixes applied *within that specific file* for the current error batch.]`
 *   **Overall Batch Summary:** After all modified files and their summaries, provide:
     *   `Estimated Percent Complete (Current Batch): [Percentage for fixing the current set of errors.]`
@@ -68,7 +68,7 @@ All development **must** follow one of the two protocols defined below:
 
 *   **Purpose:** Append to a log for AI and human review history
 *   **Trigger:** User provides the complete compiler error output and the command **`j9 go`** or **`z1.1 go`**.
-*   **Action:** Analyze errors or tasks and append them for AI and humans to track project history. Keep the appended items concentrated (1-2 lines), add a date and time along with a unique log entry id.
+*   **Action:** Analyze errors or tasks and append them for AI and humans to track project history. Keep the appended items concentrated (1-2 lines), add a date and time along with a unique log entry id. Make an exception for this activity, just give me the most recent output for the log entry and I will copy it into the LOG.md file.
 
 ---
 
@@ -82,7 +82,7 @@ All development **must** follow one of the two protocols defined below:
     *   Local simulation framework (`local_simulator.rs`) exists.
     *   Integration test file (`tests/integration_test.rs`) created with tests for setup, basic swap triggers, and a *sequential* simulation of the full arbitrage cycle. Placeholder tests for direct Huff contract verification exist.
 *   **Compilation:** `cargo check` passes cleanly (ignoring an allowed `unexpected_cfgs` warning). `huffc` compiles the Huff contract successfully.
-*   **Recent Activity:** Primarily focused on fixing Huff compilation errors, implementing the sequential integration test, and refining configuration/health checks.
+*   **Recent Activity:** Primarily focused on fixing Huff compilation errors, implementing the sequential integration test, and refining configuration/health checks. Next WebSocket‐based event testing?
 *   **Estimated Overall Completion:** ~89% (Core implementation complete, basic sequential testing structure in place, needs full test execution, hardening, and deployment prep).
 
 ## 6. Key Files Overview
