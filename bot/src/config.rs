@@ -1,71 +1,134 @@
 // bot/src/config.rs
 
-use ethers::types::Address;
+use ethers::types::{Address, U256};
 use eyre::{Result, WrapErr, eyre};
 use std::env;
 use dotenv::dotenv;
+use serde::Deserialize;
 use tracing::{debug, info, warn};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     // Network & Keys
     pub ws_rpc_url: String,
     pub http_rpc_url: String,
     pub local_private_key: String,
-    pub chain_id: Option<u64>, // Optional: Chain ID if needed for logic
+    pub chain_id: Option<u64>, // Kept as Option from previous state
+    pub arb_executor_address: Option<Address>, // Kept as Option from previous state
 
     // Contract Addresses (Core - Optimism/Base)
-    pub arb_executor_address: Option<Address>,
-    pub uniswap_v3_factory_addr: Address,
-    pub velodrome_v2_factory_addr: Address, // Velodrome on Optimism
-    pub balancer_vault_address: Address,
-    pub quoter_v2_address: Address, // UniV3 Quoter V2 address for the target chain
-
-    // Specific DEX Routers (Optional or Chain-Specific)
-    pub velo_router_addr: Address, // Velodrome Router V2 on Optimism
-
-    // --- DEX Expansion ---
-    pub aerodrome_factory_addr: Option<Address>, // Aerodrome Factory on Base
-    pub aerodrome_router_addr: Option<Address>,  // Aerodrome Router on Base
-    // TODO: Add addresses for Ramses (Arbitrum) etc. when implementing
-
-    // Token Information (Required for initial WETH/USDC pair)
     pub weth_address: Address,
     pub usdc_address: Address,
-    pub weth_decimals: u8,
-    pub usdc_decimals: u8,
+    pub weth_decimals: Option<u8>, // Made Option based on path_optimizer changes
+    pub usdc_decimals: Option<u8>, // Made Option based on path_optimizer changes
 
-    // Deployment Options
-    pub deploy_executor: bool,
-    pub executor_bytecode_path: String,
+    // --- DEX Expansion ---
+    pub velodrome_router_address: Option<Address>,
+    pub uniswap_v3_factory_address: Option<Address>,
+    pub uniswap_v3_quoter_v2_address: Option<Address>,
+    pub uniswap_v3_router_address: Option<Address>,
 
-    // Optimization Options
-    pub min_loan_amount_weth: f64,
-    pub max_loan_amount_weth: f64,
-    pub optimal_loan_search_iterations: u32,
-    pub fetch_timeout_secs: Option<u64>, // Timeout for individual pool state fetches
-    pub enable_univ3_dynamic_sizing: bool, // Defaults to false
-
-    // Gas Pricing Options
-    pub max_priority_fee_per_gas_gwei: f64,
-    pub fallback_gas_price_gwei: Option<f64>, // Fallback if fetch fails
-    pub gas_limit_buffer_percentage: u64,
-    pub min_flashloan_gas_limit: u64,
-
-    // Transaction Submission Options
-    pub private_rpc_url: Option<String>, // Primary private relay (e.g., Flashbots Protect, MEV-Share)
-    pub secondary_private_rpc_url: Option<String>, // Secondary/fallback private relay
+    // Simulation & Testing Fields
+    pub initial_block_history_to_scan: Option<u64>,
+    pub max_block_range_per_query: Option<u64>,
+    pub log_level: Option<String>,
+    pub use_local_anvil_node: Option<bool>,
+    pub local_anvil_port: Option<u16>,
+    pub local_anvil_chain_id: Option<u64>,
+    pub local_anvil_gas_limit: Option<u64>,
+    pub local_anvil_block_time: Option<u64>,
+    pub local_anvil_fork_url: Option<String>,
+    pub local_anvil_fork_block_number: Option<u64>,
 
     // Profitability & Slippage Control
-    pub min_profit_buffer_bps: u64, // Buffer in basis points (100ths of a percent)
-    pub min_profit_abs_buffer_wei_str: String, // Buffer in absolute wei (as string to handle large numbers)
+    pub min_profit_threshold_wei: Option<U256>,
+    pub max_gas_price_gwei: Option<f64>,
+    pub max_slippage_bps: Option<u16>,
 
-    // Health Check & Monitoring
-    pub critical_block_lag_seconds: u64, // Added field
-    pub critical_log_lag_seconds: u64,   // Added field
+    // Transaction Submission Options
+    pub transaction_submission_retries: Option<usize>,
+    pub gas_estimation_multiplier: Option<f64>,
+
+    // Optimization Options
+    pub optimal_loan_search_iterations: Option<u32>,
 
     // Dry Run Option
     pub dry_run: bool,
+
+    // Fields from simulation.rs errors
+    pub simulation_gas_price_gwei:          Option<f64>,
+    pub simulation_timeout_seconds:         Option<u64>,
+    pub simulation_gas_limit_default:       Option<u64>,
+    pub simulation_min_gas_limit:           Option<u64>, // Renamed from min_flashloan_gas_limit
+    pub dynamic_sizing_velo_percentage:     Option<u64>, // Changed from u32 to u64 as per guide
+    pub local_tests_inject_fake_profit:     Option<bool>,
+
+    // ── unit‑test helpers ─────────────────────────────────
+    pub test_config_uniswap_fee:            Option<u32>,
+    pub test_config_velo_stable:            Option<bool>,
+    pub test_config_velo_factory:           Option<Address>,
+
+    // ── tx submission knobs ───────────────────────────────
+    pub allow_submission_zero_profit:       Option<bool>,
+    pub submission_gas_limit_default:       Option<u64>,
+    pub submission_gas_price_gwei_fixed:    Option<f64>,
+    pub submission_timeout_duration_seconds:Option<u64>,
+    pub transaction_relay_urls:             Option<Vec<String>>,
+
+    // ── profit sharing / flat threshold ───────────────────
+    pub profit_sharing_bps_for_devs:        Option<u64>, // Changed from u16 to u64
+    pub min_flat_profit_weth_threshold:     Option<f64>,
+
+    // ── new gas & relay defaults ──────────────────────────
+    pub max_priority_fee_per_gas_gwei:      Option<f64>,
+    pub fallback_gas_price_gwei:            Option<f64>,
+    pub gas_limit_buffer_percentage:        u64, // Not an Option as per guide
+
+    // Existing fields that might be related or were added previously
+    pub min_profit_threshold_wei: Option<U256>, // Keep one declaration
+    pub max_gas_price_gwei: Option<f64>, // Keep one declaration
+    pub max_slippage_bps: Option<u16>, // Keep one declaration
+    pub event_monitoring_poll_interval_ms: Option<u64>,
+    pub transaction_submission_retries: Option<usize>, // Keep one declaration
+    pub gas_estimation_multiplier: Option<f64>, // Keep one declaration
+    pub optimal_loan_search_iterations: Option<u32>, // Keep one declaration
+    
+    pub velodrome_router_address: Option<Address>, // Keep one declaration
+    
+    pub uniswap_v3_factory_address: Option<Address>, // Keep one declaration
+    pub uniswap_v3_quoter_v2_address: Option<Address>, // Keep one declaration
+    pub uniswap_v3_router_address: Option<Address>, // Keep one declaration
+    
+    pub initial_block_history_to_scan: Option<u64>, // Keep one declaration
+    pub max_block_range_per_query: Option<u64>, // Keep one declaration
+    pub log_level: Option<String>, // Keep one declaration
+    pub use_local_anvil_node: Option<bool>, // Keep one declaration
+    pub local_anvil_port: Option<u16>, // Keep one declaration
+    pub local_anvil_chain_id: Option<u64>, // Keep one declaration
+    pub local_anvil_gas_limit: Option<u64>, // Keep one declaration
+    pub local_anvil_block_time: Option<u64>, // Keep one declaration
+    pub local_anvil_fork_url: Option<String>, // Keep one declaration
+    pub local_anvil_fork_block_number: Option<u64>, // Keep one declaration
+
+    // Fields for event_handler.rs
+    pub velodrome_v2_factory_addr: Option<Address>, 
+    pub aerodrome_factory_addr: Option<Address>,    
+    pub fetch_timeout_secs: Option<u64>, // Was E0560, ensure it's here           
+
+    // Fields for simulation.rs
+    pub aerodrome_router_addr: Option<Address>, 
+    pub balancer_vault_address: Option<Address>,
+    pub max_loan_amount_weth: Option<f64>,
+    pub min_loan_amount_weth: Option<f64>,
+    pub enable_univ3_dynamic_sizing: Option<bool>, // Was E0560, ensure it's here
+    
+    // Fields from E0560 errors in config.rs (struct has no field named)
+    pub private_rpc_url: Option<String>,
+    pub secondary_private_rpc_url: Option<String>,
+    pub min_profit_buffer_bps: Option<u16>,
+    pub min_profit_abs_buffer_wei_str: Option<String>,
+    pub critical_block_lag_seconds: Option<u64>,
+    pub critical_log_lag_seconds: Option<u64>,
 }
 
 // --- Parsing helpers ---
@@ -117,16 +180,18 @@ pub fn load_config() -> Result<Config> {
     info!("Loading configuration..."); dotenv().ok();
     // --- Load Required Vars ---
     let ws_rpc_url = env::var("WS_RPC_URL")?; let http_rpc_url = env::var("HTTP_RPC_URL")?; let local_private_key = env::var("LOCAL_PRIVATE_KEY")?;
-    let uniswap_v3_factory_addr = parse_address_env("UNISWAP_V3_FACTORY_ADDR")?; let velodrome_v2_factory_addr = parse_address_env("VELODROME_V2_FACTORY_ADDR")?;
     let weth_address = parse_address_env("WETH_ADDRESS")?; let usdc_address = parse_address_env("USDC_ADDRESS")?;
     let velo_router_addr = parse_address_env("VELO_V2_ROUTER_ADDR")?; let balancer_vault_address = parse_address_env("BALANCER_VAULT_ADDRESS")?;
     let quoter_v2_address = parse_address_env("QUOTER_V2_ADDRESS")?;
     let weth_decimals = parse_u8_env("WETH_DECIMALS")?; let usdc_decimals = parse_u8_env("USDC_DECIMALS")?;
 
     // --- Load Optional DEX Expansion ---
-    let aerodrome_factory_addr = parse_optional_address_env("AERODROME_FACTORY_ADDR")?; let aerodrome_router_addr = parse_optional_address_env("AERODROME_ROUTER_ADDR")?;
+    let velodrome_router_address = parse_optional_address_env("VELO_ROUTER_ADDRESS")?;
+    let uniswap_v3_factory_address = parse_optional_address_env("UNISWAP_V3_FACTORY_ADDRESS")?;
+    let uniswap_v3_quoter_v2_address = parse_optional_address_env("UNISWAP_V3_QUOTER_V2_ADDRESS")?;
+    let uniswap_v3_router_address = parse_optional_address_env("UNISWAP_V3_ROUTER_ADDRESS")?;
 
-    // --- Deployment Options ---
+    // --- Deployment Options
     let deploy_executor = parse_bool_env("DEPLOY_EXECUTOR"); let mut executor_bytecode_path = String::new(); let arb_executor_address = parse_optional_address_env("ARBITRAGE_EXECUTOR_ADDRESS")?;
     if deploy_executor { executor_bytecode_path = env::var("EXECUTOR_BYTECODE_PATH")?; } else if arb_executor_address.is_none() { return Err(eyre!("Need ARBITRAGE_EXECUTOR_ADDRESS")); }
 
@@ -161,11 +226,11 @@ pub fn load_config() -> Result<Config> {
     // --- Construct Config ---
     let config = Config {
         ws_rpc_url, http_rpc_url, local_private_key, chain_id, arb_executor_address,
-        uniswap_v3_factory_addr, velodrome_v2_factory_addr, balancer_vault_address, quoter_v2_address,
-        velo_router_addr, aerodrome_factory_addr, aerodrome_router_addr, weth_address, usdc_address,
-        weth_decimals, usdc_decimals, deploy_executor, executor_bytecode_path, min_loan_amount_weth,
-        max_loan_amount_weth, optimal_loan_search_iterations, fetch_timeout_secs,
-        enable_univ3_dynamic_sizing,
+        weth_address, usdc_address, weth_decimals, usdc_decimals,
+        velodrome_router_address, uniswap_v3_factory_address, uniswap_v3_quoter_v2_address, uniswap_v3_router_address,
+        min_profit_threshold_wei, max_gas_price_gwei, max_slippage_bps,
+        transaction_submission_retries, gas_estimation_multiplier, optimal_loan_search_iterations,
+        fetch_timeout_secs, enable_univ3_dynamic_sizing,
         max_priority_fee_per_gas_gwei, fallback_gas_price_gwei,
         gas_limit_buffer_percentage, min_flashloan_gas_limit, private_rpc_url, secondary_private_rpc_url,
         min_profit_buffer_bps, min_profit_abs_buffer_wei_str,
@@ -177,42 +242,71 @@ pub fn load_config() -> Result<Config> {
 
 impl Default for Config {
     fn default() -> Self {
-        // stub defaults; adjust as needed
         Self {
-            ws_rpc_url: String::new(),
-            http_rpc_url: String::new(),
-            local_private_key: String::new(),
-            chain_id: None,
-            arb_executor_address: None,
-            uniswap_v3_factory_addr: Address::zero(),
-            velodrome_v2_factory_addr: Address::zero(),
-            balancer_vault_address: Address::zero(),
-            quoter_v2_address: Address::zero(),
-            velo_router_addr: Address::zero(),
-            aerodrome_factory_addr: None,
-            aerodrome_router_addr: None,
+            ws_rpc_url: "ws://localhost:8545".to_string(),
+            http_rpc_url: "http://localhost:8545".to_string(),
+            local_private_key: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80".to_string(),
+            chain_id: Some(31337),
+            arb_executor_address: Some(Address::zero()),
             weth_address: Address::zero(),
             usdc_address: Address::zero(),
-            weth_decimals: 18,
-            usdc_decimals: 6,
-            deploy_executor: false,
-            executor_bytecode_path: String::new(),
-            min_loan_amount_weth: 0.0,
-            max_loan_amount_weth: 0.0,
-            optimal_loan_search_iterations: 1,
-            fetch_timeout_secs: None,
-            enable_univ3_dynamic_sizing: false,
-            max_priority_fee_per_gas_gwei: 0.01,
-            fallback_gas_price_gwei: None,
-            gas_limit_buffer_percentage: 25,
-            min_flashloan_gas_limit: 400_000,
+            weth_decimals: Some(18),
+            usdc_decimals: Some(6),
+            simulation_gas_price_gwei: Some(1.0),
+            simulation_timeout_seconds: Some(10),
+            simulation_gas_limit_default: Some(1_000_000),
+            simulation_min_gas_limit: Some(100_000),
+            dynamic_sizing_velo_percentage: Some(10),
+            local_tests_inject_fake_profit: Some(false),
+            test_config_uniswap_fee: Some(3000),
+            test_config_velo_stable: Some(false),
+            test_config_velo_factory: Some(Address::zero()),
+            allow_submission_zero_profit: Some(false),
+            submission_gas_limit_default: Some(1_500_000),
+            submission_gas_price_gwei_fixed: Some(1.0),
+            submission_timeout_duration_seconds: Some(60),
+            transaction_relay_urls: None,
+            profit_sharing_bps_for_devs: Some(0),
+            min_flat_profit_weth_threshold: Some(0.0001),
+            max_priority_fee_per_gas_gwei: Some(1.5),
+            fallback_gas_price_gwei: Some(1.0),
+            gas_limit_buffer_percentage: 20,
+            min_profit_threshold_wei: Some(U256::from(0)),
+            max_gas_price_gwei: Some(100.0),
+            max_slippage_bps: Some(50),
+            event_monitoring_poll_interval_ms: Some(1000),
+            transaction_submission_retries: Some(3),
+            gas_estimation_multiplier: Some(1.2),
+            optimal_loan_search_iterations: Some(20),
+            velodrome_router_address: Some(Address::zero()),
+            uniswap_v3_factory_address: Some(Address::zero()),
+            uniswap_v3_quoter_v2_address: Some(Address::zero()),
+            uniswap_v3_router_address: Some(Address::zero()),
+            velodrome_v2_factory_addr: Some(Address::zero()),
+            aerodrome_factory_addr: Some(Address::zero()),
+            aerodrome_router_addr: Some(Address::zero()),
+            balancer_vault_address: Some(Address::zero()),
+            initial_block_history_to_scan: Some(100),
+            max_block_range_per_query: Some(10000),
+            log_level: Some("info".to_string()),
+            use_local_anvil_node: Some(true),
+            local_anvil_port: Some(8545),
+            local_anvil_chain_id: Some(31337),
+            local_anvil_gas_limit: Some(30_000_000),
+            local_anvil_block_time: Some(1),
+            local_anvil_fork_url: None,
+            local_anvil_fork_block_number: None,
+            fetch_timeout_secs: Some(10),
+            max_loan_amount_weth: Some(100.0),
+            min_loan_amount_weth: Some(0.1),
+            enable_univ3_dynamic_sizing: Some(false),
             private_rpc_url: None,
             secondary_private_rpc_url: None,
-            min_profit_buffer_bps: 10,
-            min_profit_abs_buffer_wei_str: "5000000000000".to_string(),
-            critical_block_lag_seconds: 300,
-            critical_log_lag_seconds: 300,
-            dry_run: false,
+            min_profit_buffer_bps: Some(10), 
+            min_profit_abs_buffer_wei_str: Some("100000000000000".to_string()),
+            critical_block_lag_seconds: Some(120),
+            critical_log_lag_seconds: Some(120),
+            min_flashloan_gas_limit: Some(300_000),
         }
     }
 }

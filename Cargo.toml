@@ -27,6 +27,7 @@ dotenv = "0.15"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 # rust_decimal removed
+thiserror = "1.0" # Added thiserror
 num-traits = "0.2.19"
 chrono = { version = "0.4", features = ["clock"] }
 # clap removed

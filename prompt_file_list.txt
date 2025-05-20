@@ -9,4 +9,6 @@ PROJECT_FEASIBILITY.md
 ULP-1.5-Networking.md
 PROJECT_LOG.md
 run_me.sh
+p1_loop.sh
 prompt.md
+results.txt

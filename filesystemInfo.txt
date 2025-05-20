@@ -1,0 +1,55 @@
+Directory: /
+  Directory: abis
+  Directory: bot
+  Directory: build
+  Directory: contracts
+  File: .env
+  File: Cargo.toml
+  File: PROJECT_FEASIBILITY.md
+  File: PROJECT_LOG.md
+  File: README.md
+  File: ULP-1.5-Networking.md
+  File: p1_loop.sh
+  File: prompt.md
+  File: results.txt
+  File: run_me.sh
+
+Directory: /abis
+  File: AerodromePool.json
+  File: ArbitrageExecutor.json
+  File: BalancerVault.json
+  File: IUniswapV3Factory.json
+  File: IUniswapV3Pool.json
+  File: IVelodromeFactory.json
+  File: QuoterV2.json
+  File: UniswapV3Pool.json
+  File: VelodromeRouter.json
+  File: VelodromeV2Pool.json
+  (other .json files as needed)
+
+Directory: /bot
+  Directory: src
+  (other potential subdirectories like 'tests' if not listed separately)
+
+Directory: /bot/src
+  File: bindings.rs
+  File: config.rs
+  File: event_handler.rs
+  File: gas.rs
+  File: lib.rs
+  File: main.rs
+  File: path_optimizer.rs
+  File: simulation.rs
+  File: state.rs
+  File: transaction.rs
+  File: utils.rs
+  (other .rs files)
+
+Directory: /contracts
+  File: ArbitrageExecutor.huff
+  (other .huff or .sol files)
+
+Directory: /build
+  (build artifacts, usually ignored by .gitignore)
+
+(Potentially other directories like .vscode, target, etc., which are often in .gitignore)

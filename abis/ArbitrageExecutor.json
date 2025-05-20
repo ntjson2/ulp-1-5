@@ -16,5 +16,38 @@
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "address", "name": "buy_pool_addr", "type": "address" },
+        { "internalType": "address", "name": "sell_pool_addr", "type": "address" },
+        { "internalType": "address", "name": "loan_token", "type": "address" },
+        { "internalType": "address", "name": "intermediate_token", "type": "address" },
+        { "internalType": "uint256", "name": "loan_amount_wei", "type": "uint256" },
+        { "internalType": "uint8", "name": "buy_dex_type", "type": "uint8" },
+        { "internalType": "uint8", "name": "sell_dex_type", "type": "uint8" },
+        { "internalType": "uint256", "name": "salt", "type": "uint256" }
+      ],
+      "name": "execute_flash_arbitrage",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "address", "name": "buy_pool_addr", "type": "address" },
+        { "internalType": "address", "name": "sell_pool_addr", "type": "address" },
+        { "internalType": "address", "name": "loan_token", "type": "address" },
+        { "internalType": "address", "name": "intermediate_token", "type": "address" },
+        { "internalType": "uint256", "name": "loan_amount_wei", "type": "uint256" },
+        { "internalType": "address", "name": "balancer_vault_addr", "type": "address" },
+        { "internalType": "uint8", "name": "buy_dex_type", "type": "uint8" },
+        { "internalType": "uint8", "name": "sell_dex_type", "type": "uint8" },
+        { "internalType": "uint256", "name": "salt", "type": "uint256" }
+      ],
+      "name": "execute_flash_arbitrage_balancer",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
     }
-  ]
+]

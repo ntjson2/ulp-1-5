@@ -34,6 +34,14 @@ When the user enters `j9 go`:
     a. A brief summary of fixes applied.  
     b. Next steps for the user.
 
+### Bug fix prompt (j9.1 go)
+When the user enters `j9.1 go`:
+1.  Follow `j9 go` rules except only fix one file instead of all relevant files.
+2. Make sure this file has the fewest dependencies or is the root or cause of bugs of other files.
+3.  After making changes, provide:
+    a. A brief summary of fixes applied.  
+    b. Next steps for the user.
+
 ### Project task continuation (z1.1 go)
 When the user enters `z1.1 go`, Review project scope and goals, perform the next discrete task needed for the project starting with code updates. Then LOG1. After making changes, provide:
 1. A brief summary of the overall task completed.
@@ -61,14 +69,19 @@ After each `j9 go` or `z1.1 go` execution and code updates, ask the user to run:
 
 ## 7. Current Task Scope & Next Steps
 
-*   **Current Task (Completed in previous interaction):** Successfully enhanced `test_event_handling_triggers_arbitrage_check`. This test now verifies that `handle_log_event` correctly processes a synthetic `Swap` log, updates the `PoolSnapshot`, and triggers the arbitrage check.
+*   **Current Task (Completed in this interaction via `tracking.txt` analysis):** Resolved execution issues with `p1_loop.sh` (CRLF line endings, permissions, execution path). The script is now ready to be run.
 *   **Immediate Next Steps (for this new session):**
-    1.  **Test Main Event Loop with WS (More Complex):**
-        *   Design a test that initializes the main bot components (`AppState`, `Client`, `NonceManager`, event filters).
-        *   Start a test-specific loop via `run_event_loop_ws_test` to subscribe to Anvil’s WS stream.
-        *   Trigger a swap (using `MinimalSwapEmitter` or `trigger_v3_swap_via_router`).
-        *   Assert that the WS loop receives the event and sets `test_arb_check_triggered`.
-    2.  Begin planning for live network testing (Testnet then Mainnet Dry Run) as outlined in `PROJECT_DIRECTION_LOG.md` and considering advice from `ULP-1.5-Networking.md`.
+    1.  **Execute `p1_loop.sh`:**
+        *   Run `./p1_loop.sh` in the WSL terminal. This script will execute `run_me.sh` (which builds the project and runs tests) and pipe the output to `results.txt`.
+    2.  **Analyze `results.txt`:**
+        *   If `results.txt` contains errors from `run_me.sh`, provide it for a `j9 go` (or `j9.1 go`) command to fix the issues.
+    3.  **If `run_me.sh` is successful (no errors in `results.txt`, all tests pass):**
+        *   Proceed with the **Test Main Event Loop with WS (More Complex):**
+            *   Design a test that initializes the main bot components (`AppState`, `Client`, `NonceManager`, event filters).
+            *   Start a test-specific loop via `run_event_loop_ws_test` to subscribe to Anvil’s WS stream.
+            *   Trigger a swap (using `MinimalSwapEmitter` or `trigger_v3_swap_via_router`).
+            *   Assert that the WS loop receives the event and sets `test_arb_check_triggered`.
+    4.  Begin planning for live network testing (Testnet then Mainnet Dry Run) as outlined in `PROJECT_LOG.md` (formerly `PROJECT_DIRECTION_LOG.md`) and considering advice from `ULP-1.5-Networking.md`.
 
 *   **Lower Priority / Future:**
     *   Address Anvil state inconsistencies for Velodrome V2.
@@ -92,3 +105,7 @@ When invoking N1, provide a deep recommendation on the next direction based on t
   - Brief status summary (tests run, pass/fail counts)
   - Next steps/actions
   - AI helper signature (e.g., `— GitHub Copilot`)
+
+
+##  j9/z1.1/j9.1/ws1 prompts addendum
+- When running any of these, refamiliarize yourself with filesysteminfo.txt and the required api's, sdks and codeing languages of this system so simeple errors and path issues are avoided.

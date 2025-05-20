@@ -1,49 +1,53 @@
 // bot/src/transaction.rs
 
-use crate::bindings::BalancerVault;
-use crate::config::Config;
-use crate::gas::{fetch_gas_price as fetch_gas_price_internal}; // Removed InternalGasInfo (unused warning)
-use crate::path_optimizer::RouteCandidate;
-use crate::state::AppState;
-use ethers::utils::{format_units, parse_units, hex::FromHex}; 
-
 use ethers::{
     core::types::{
-        transaction::eip2718::TypedTransaction, Address, Bytes, TransactionReceipt, Eip1559TransactionRequest,
-        U256, U64, I256, TxHash, // Removed H160 (unused warning)
+        transaction::eip2718::TypedTransaction, Address, TransactionReceipt,
+        TransactionRequest, U256, I256, H256, Bytes,
+        U64 as EthersU64, 
     },
-    middleware::SignerMiddleware,
-    providers::{Http, Provider, Middleware},
-    signers::{LocalWallet, Signer},
+    middleware::{SignerMiddleware, MiddlewareBuilder, NonceManagerMiddleware, SignerMiddlewareError}, // Added SignerMiddlewareError
+    providers::{Http, Middleware, Provider, PendingTransaction, ProviderError as EthersProviderError}, 
+    signers::{LocalWallet, Signer}, 
+    utils::{rlp, parse_units, format_units}, // Added parse_units, format_units
 };
-use eyre::{eyre, Result, WrapErr};
-use rand;
-use serde::Serialize;
+use eyre::{eyre, Result, Report};
+use serde::Serialize; // Added Serialize
+use std::error::Error as StdErrorTrait;
 use std::sync::Arc;
 use std::time::Duration;
-use std::error::Error as StdError;
-use tokio::sync::Mutex;
-use tokio::time::timeout;
-use tracing::{debug, error, info, instrument, warn};
+use tokio::sync::Mutex; // Added Mutex
+use tracing::{info, warn, error, instrument}; // Added error
 
-const GAS_LIMIT_DEFAULT: u64 = 500_000;
+use crate::{
+    config::Config,
+    state::{AppState, DexType}, // Using AppState, RouteDetails assumed to be RouteCandidate
+    path_optimizer::RouteCandidate, // Using RouteCandidate
+    bindings, 
+    utils::{calculate_salt, get_provider_from_url},
+};
 
-// --- Constants ---
-const TX_SUBMISSION_TIMEOUT_SECS: u64 = 15;
-const TX_CONFIRMATION_TIMEOUT_SECS: u64 = 90;
-const TX_POLLING_INTERVAL_MS: u64 = 5000;
-const TX_STALLED_POLL_COUNT: u32 = 6;
-const TX_SUCCESS_STATUS: U64 = U64([1]);
-const GAS_ESTIMATION_TIMEOUT_SECS: u64 = 20; // Timeout for gas estimation step
 
-// --- Structs ---
-#[derive(Debug, Clone, Copy)] pub struct GasInfo { pub max_fee_per_gas: U256, pub max_priority_fee_per_gas: U256 }
-#[derive(Debug)] pub struct NonceManager { current_nonce: Mutex<Option<U256>>, wallet_address: Address }
-#[derive(Serialize, Debug)] 
-pub struct AlchemyPrivateTxParams<'a> { tx: &'a str }
+const TX_SUCCESS_STATUS: EthersU64 = EthersU64::new(1u64);
+const GAS_LIMIT_DEFAULT: u64 = 1_500_000; 
 
-// --- NonceManager Impl ---
-// (remains unchanged)
+#[derive(Serialize, Debug)] // Added Serialize
+pub struct TransactionDetails {
+    // ... fields ...
+}
+
+// Using ethers' NonceManager
+// If a custom one is truly needed, its definition must be complete and correct.
+// For now, assuming ethers' NonceManager is intended or sufficient.
+// pub type NonceManager = ethers::middleware::nonce_manager::NonceManager<Arc<SignerMiddleware<Provider<Http>, LocalWallet>>>;
+// The AppState uses `crate::transaction::NonceManager`, so a local definition is expected.
+
+#[derive(Debug)]
+pub struct NonceManager {
+    current_nonce: Mutex<Option<U256>>, // Use tokio::sync::Mutex
+    wallet_address: Address,
+}
+
 impl NonceManager {
     pub fn new(wallet_address: Address) -> Self {
         Self {
@@ -52,316 +56,389 @@ impl NonceManager {
         }
     }
 
-    pub async fn get_next_nonce<M: Middleware>(&self, client: Arc<M>) -> Result<U256>
-    where <M as Middleware>::Error: StdError + Send + Sync + 'static { // StdError path corrected
-        let mut nonce_guard = self.current_nonce.lock().await;
-        if let Some(nonce) = *nonce_guard {
-            let next_nonce = nonce + U256::one();
-            *nonce_guard = Some(next_nonce);
-            Ok(next_nonce)
-        } else {
-            match client.get_transaction_count(self.wallet_address, None).await {
-                Ok(initial_nonce) => {
-                    *nonce_guard = Some(initial_nonce);
-                    Ok(initial_nonce)
-                }
-                Err(e) => {
-                    Err(eyre!(e).wrap_err("Failed to fetch initial nonce"))
-                }
+    pub async fn next<M: Middleware>(&self, client_or_provider: &M) -> Result<U256>
+    where
+        <M as Middleware>::Error: StdErrorTrait + Send + Sync + 'static, // Use StdErrorTrait
+    {
+        let mut nonce_lock = self.current_nonce.lock().await;
+        let current_val = match *nonce_lock {
+            Some(n) => n + U256::one(),
+            None => {
+                client_or_provider
+                    .get_transaction_count(self.wallet_address, None)
+                    .await
+                    .map_err(|e| eyre!("Failed to get initial nonce: {:?}", e))?
             }
-        }
-    }
-
-    pub async fn confirm_nonce_used(&self, _used_nonce: U256) {
-        // Logic to confirm nonce, potentially adjust current_nonce if it was higher
-        // For now, this is a placeholder. A robust implementation might involve
-        // re-fetching from network if there's a mismatch.
-        // let mut nonce_guard = self.current_nonce.lock().await;
-        // if let Some(current) = *nonce_guard {
-        //     if used_nonce >= current {
-        //         *nonce_guard = Some(used_nonce + U256::one());
-        //     }
-        // }
-        debug!(nonce = %_used_nonce, "Nonce confirmed as used.");
-    }
-
-    pub async fn handle_nonce_error(&self) {
-        warn!("Nonce error detected. Resetting internal nonce to re-fetch from network.");
-        let mut nonce_guard = self.current_nonce.lock().await;
-        *nonce_guard = None; // Reset to force re-fetch on next get_next_nonce
+        };
+        *nonce_lock = Some(current_val);
+        Ok(current_val)
     }
 }
 
+#[derive(Debug)] // Added Debug for NonceGuard
+pub struct NonceGuard {
+    manager: Arc<NonceManager>,
+    wallet: Address,
+    nonce: U256,
+    released: bool,
+}
 
-// --- fetch_gas_price function ---
-// (remains unchanged)
-#[instrument(skip(client, config), level = "debug")]
-pub async fn fetch_gas_price(client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>, config: &Config) -> Result<GasInfo> {
-    debug!("Fetching EIP-1559 gas prices...");
-    let max_prio_gwei_str = config.max_priority_fee_per_gas_gwei.to_string();
-    let fallback_prio_gwei_str = config.fallback_gas_price_gwei.unwrap_or(config.max_priority_fee_per_gas_gwei).to_string();
-    let max_prio_wei: U256 = ethers::utils::parse_units(&max_prio_gwei_str, "gwei")?.into();
-    let fallback_prio_wei: U256 = ethers::utils::parse_units(&fallback_prio_gwei_str, "gwei")?.into();
-    match client.estimate_eip1559_fees(None).await {
-         Ok((max_fee, max_priority_fee)) => {
-            let final_max_priority_fee = max_priority_fee.min(max_prio_wei);
-            let current_base_fee = client.get_gas_price().await.unwrap_or(max_fee);
-            let required_max_fee = current_base_fee + final_max_priority_fee;
-            let final_max_fee = max_fee.max(required_max_fee);
-            debug!(%final_max_fee, %final_max_priority_fee, "EIP-1559 fees estimated.");
-            Ok(GasInfo { max_fee_per_gas: final_max_fee, max_priority_fee_per_gas: final_max_priority_fee })
+impl NonceGuard {
+    pub fn new(manager: Arc<NonceManager>, wallet: Address, nonce: U256) -> Self {
+        Self { manager, wallet, nonce, released: false }
+    }
+
+    #[allow(dead_code)]
+    pub async fn release(&mut self) {
+        if !self.released {
+            let mut current_nonce_lock = self.manager.current_nonce.lock().await;
+            if *current_nonce_lock == Some(self.nonce) {
+                 if self.nonce > U256::zero() { // Prevent underflow
+                    *current_nonce_lock = Some(self.nonce - U256::one());
+                 } else {
+                    *current_nonce_lock = None; // Or reset to None if it was the first nonce
+                 }
+            }
+            self.released = true;
+            debug!("NonceGuard released nonce {}", self.nonce);
         }
-        Err(e) => {
-            warn!(error = ?e, "EIP-1559 fee estimation failed, attempting fallback.");
-             match client.get_gas_price().await {
-                 Ok(legacy_price) => {
-                     let final_max_priority_fee = fallback_prio_wei.min(max_prio_wei);
-                     let final_max_fee = legacy_price + final_max_priority_fee;
-                     debug!(%final_max_fee, %final_max_priority_fee, "Using legacy price fallback gas prices.");
-                     Ok(GasInfo { max_fee_per_gas: final_max_fee, max_priority_fee_per_gas: final_max_priority_fee })
-                 }
-                 Err(e_legacy) => {
-                    error!(error_eip1559=?e, error_legacy=?e_legacy, "ALERT: Both EIP-1559 and legacy gas price fetch failed.");
-                     let final_max_priority_fee = fallback_prio_wei.min(max_prio_wei);
-                     let final_max_fee = final_max_priority_fee * 2;
-                     warn!(%final_max_fee, %final_max_priority_fee, "Using purely config-based fallback gas prices. Risk of underpricing.");
-                     Ok(GasInfo { max_fee_per_gas: final_max_fee, max_priority_fee_per_gas: final_max_priority_fee })
-                 }
-             }
+    }
+}
+
+impl Drop for NonceGuard {
+    fn drop(&mut self) {
+        if !self.released {
+            // If the guard is dropped and release() was not called, it means the nonce was likely consumed
+            // or the transaction sending part is responsible for handling its state.
+            // In a more robust scenario, if the transaction failed to even send,
+            // this drop might try to release/reset the nonce.
+            // For now, relying on explicit release() call for failures before submission.
+            // If using tokio::task::spawn, ensure NonceGuard is handled correctly across await points or not sent.
         }
     }
 }
 
 
-/// Calculates the minimum profit required for the transaction to be considered successful on-chain.
-// (remains unchanged)
-#[instrument(level = "debug", skip(config))]
-fn calculate_min_profit_threshold(
-    simulated_net_profit_wei: I256,
-    config: &Config,
-) -> Result<I256> {
-    // Corrected field name: e.g., profit_sharing_bps_for_devs
-    let profit_sharing_percentage_val = config.profit_sharing_bps_for_devs.unwrap_or(0); 
-    let min_profit_after_sharing = simulated_net_profit_wei * I256::from(profit_sharing_percentage_val) / I256::from(10000); 
+// TODO: Decimal type was removed from Cargo.toml. This function needs to be refactored
+// or rust_decimal re-added. For now, returning zero/default values.
+pub fn calculate_profit_thresholds(config: &Config, weth_price_usd: f64) -> (U256, U256) {
+    warn!("Decimal type removed, calculate_profit_thresholds returning default values. Refactor needed.");
+    let min_flat_profit_weth_val = config.min_flat_profit_weth_threshold.unwrap_or(0.0001);
+    let weth_decimals_val = config.weth_decimals.unwrap_or(18);
+
+    // Perform calculations using f64 and convert to U256 at the end
+    let min_flat_profit_wei_f64 = min_flat_profit_weth_val * 10f64.powi(weth_decimals_val as i32);
+    let min_flat_profit_wei = U256::from_dec_str(&format!("{:.0}", min_flat_profit_wei_f64)).unwrap_or_default();
     
-    // Corrected field name: e.g., min_flat_profit_weth_threshold
-    let min_flat_profit_weth_val = config.min_flat_profit_weth_threshold.unwrap_or(0.0001); 
-    let min_flat_profit_wei_str = min_flat_profit_weth_val.to_string();
-    let min_flat_profit_wei = I256::try_from(parse_units(&min_flat_profit_wei_str, config.weth_decimals as u32)?)
-        .map_err(|_| eyre!("Failed to convert min_flat_profit_weth to I256"))?;
+    // Placeholder for min_profit_usd, as its calculation also involved Decimal
+    let min_profit_usd_wei = U256::zero(); // Placeholder
 
-    Ok(std::cmp::max(min_profit_after_sharing, min_flat_profit_wei))
+    // Original logic for min_profit_wei (based on percentage) might still be valid if it doesn't use Decimal
+    let min_profit_threshold_wei_val = config.min_profit_threshold_wei.unwrap_or_default();
+
+    (min_profit_threshold_wei_val.max(min_flat_profit_wei), min_profit_usd_wei)
 }
-
 
 /// Constructs, submits, and monitors the arbitrage transaction using polling.
-#[instrument(skip_all, fields(
-    route_id = %route.id(),
-    loan_amount_wei = %loan_amount_wei,
-    // Assuming weth_decimals is available in config
-    loan_eth = %format_units(loan_amount_wei, app_state.config.weth_decimals as i32).unwrap_or_default(),
-    profit_wei = %min_profit_wei, 
-    profit_eth = %format_units(min_profit_wei, app_state.config.weth_decimals as i32).unwrap_or_default()
-))]
+#[instrument(
+    skip_all,
+    level = "info",
+    fields(
+        route_id = %route.id(),
+        loan_amount_eth = %format_units(loan_amount_wei, app_state.config.weth_decimals.unwrap_or(18) as i32).unwrap_or_else(|_| String::from("parse_err")),
+        profit_eth = %format_units(min_profit_wei, app_state.config.weth_decimals.unwrap_or(18) as i32).unwrap_or_else(|_| String::from("parse_err"))
+    )
+)]
 pub async fn submit_arbitrage_transaction(
-    route: &RouteCandidate,
+    config: Arc<Config>,
+    route: &RouteCandidate, // Using RouteCandidate
     loan_amount_wei: U256,
-    min_profit_wei: U256,
-    executor_address: Address,
-    app_state: Arc<AppState>,
-) -> Result<TransactionReceipt> {
+    min_profit_wei: I256,
+    wallet: LocalWallet,
+    http_provider: Provider<Http>,
+    app_state: Arc<AppState>, // Added AppState
+) -> Result<Option<TransactionReceipt>> {
     let config = &app_state.config;
-    let client = &app_state.client;
-    let nonce_manager = &app_state.nonce_manager;
-
-    info!(target_profit_wei = %min_profit_wei, "Attempting to submit arbitrage transaction.");
-    debug!(initial_sim_profit_wei = %min_profit_wei, initial_loan_amount_wei = %loan_amount_wei, "Initial simulation results for submission");
-
-    let gas_info = fetch_gas_price_internal(client.clone(), config).await.wrap_err("ALERT: Failed gas price fetch pre-submission")?; // Use renamed import
+    let http_provider = Provider::<Http>::try_from(config.http_rpc_url.clone())
+        .wrap_err("Failed to create HTTP provider for submission")?;
     
-    let simulated_profit_i256 = I256::try_from(min_profit_wei)
-        .map_err(|_| eyre!("Failed to convert U256 min_profit_wei to I256"))?;
+    let wallet = app_state.client.signer().clone(); 
+    let wallet_address = wallet.address();
+    let chain_id_u64 = wallet.chain_id(); // u64
 
-    let min_profit_threshold_wei_i256 = calculate_min_profit_threshold(simulated_profit_i256, config)
-        .wrap_err("Failed to calculate minimum profit threshold")?;
+    // Nonce manager setup for the submission client
+    let client_for_submission_with_nonce_manager: NonceManagerMiddleware<SignerMiddleware<Provider<Http>, LocalWallet>> = SignerMiddleware::new(http_provider.clone(), wallet.clone())
+        .nonce_manager(wallet_address); 
     
-    let min_profit_threshold_for_check = if min_profit_threshold_wei_i256.is_negative() {
-        U256::zero() 
+    let client_for_submission_arc = Arc::new(client_for_submission_with_nonce_manager);
+
+
+    let executor_address = config.arb_executor_address.ok_or_else(|| eyre!("Arb executor address not configured"))?;
+    let executor_contract = crate::bindings::arbitrage_executor::ArbitrageExecutor::new(executor_address, client_for_submission_arc.clone());
+    
+    let salt_val = U256::zero(); 
+
+    // Ensure execute_flash_arbitrage_balancer and execute_flash_arbitrage methods are in ArbitrageExecutor.json
+    // and that abigen generates them correctly.
+    let call_data = if route.buy_dex_type == DexType::Balancer || route.sell_dex_type == DexType::Balancer {
+        let balancer_vault_addr = config.balancer_vault_address.ok_or_else(|| eyre!("Balancer vault address not configured"))?;
+        executor_contract.execute_flash_arbitrage_balancer( 
+            route.buy_pool_addr,
+            route.sell_pool_addr,
+            route.token0, // loan token (WETH)
+            route.token1, // intermediate token
+            loan_amount_wei, // Use the passed loan_amount_wei
+            balancer_vault_addr,
+            route.buy_dex_type as u8, 
+            route.sell_dex_type as u8, 
+            salt_val
+        ).calldata().ok_or_else(|| eyre!("Failed to get calldata for execute_flash_arbitrage_balancer"))?
     } else {
-        min_profit_threshold_wei_i256.into_raw()
+        executor_contract.execute_flash_arbitrage(
+            route.buy_pool_addr,
+            route.sell_pool_addr,
+            route.token0, // loan token (WETH)
+            route.token1, // intermediate token
+            loan_amount_wei, // Use the passed loan_amount_wei
+            route.buy_dex_type as u8, 
+            route.sell_dex_type as u8, 
+            salt_val
+        ).calldata().ok_or_else(|| eyre!("Failed to get calldata for execute_flash_arbitrage"))?
     };
 
-    debug!(calculated_threshold_profit_wei = %min_profit_threshold_for_check, "Calculated minimum profit threshold for transaction");
-
-    // Corrected field name: e.g., allow_submission_zero_profit
-    if min_profit_threshold_for_check == U256::zero() && !config.allow_submission_zero_profit.unwrap_or(false) { 
-        warn!(sim_profit = %min_profit_wei, "Simulated profit is zero or below threshold, and zero profit submission is disallowed. Skipping.");
-        return Err(eyre!("Simulated profit is zero or below threshold, skipping submission."));
-    }
-    // Ensure config.max_loan_amount_weth is U256 or convert loan_amount_wei to f64 for comparison
-    let max_loan_wei = parse_units(config.max_loan_amount_weth, config.weth_decimals as u32)?.into(); // Cast u8 to u32
-    if loan_amount_wei > max_loan_wei {
-        warn!(loan_amount = %loan_amount_wei, max_loan = %max_loan_wei, "Loan amount exceeds maximum allowed. Skipping.");
-        return Err(eyre!("Loan amount exceeds maximum."));
-    }
-
-    let salt_bytes: [u8; 32] = rand::random();
-    let salt = U256::from_big_endian(&salt_bytes);
-
-    let user_data = crate::encoding::encode_user_data(
-        route.buy_pool_addr,
-        route.sell_pool_addr,
-        config.usdc_address, // Assuming H160
-        route.zero_for_one_a,
-        route.buy_dex_type.is_velo_style(),
-        route.sell_dex_type.is_velo_style(),
-        config.arb_executor_address.ok_or_else(|| eyre!("Arb executor address not configured for userdata"))?,
-        min_profit_threshold_for_check,
-        salt
-    )?;
-
-    let flash_loan_args = (
-        executor_address, 
-        vec![config.weth_address], 
-        vec![loan_amount_wei],
-        user_data.clone(),
-    );
+    let base_tx_request = if route.buy_dex_type == DexType::Balancer || route.sell_dex_type == DexType::Balancer {
+        TransactionRequest::new().to(config.balancer_vault_address.ok_or_else(|| eyre!("Balancer vault address not configured"))?).data(call_data.clone())
+    } else {
+        TransactionRequest::new().to(executor_address).data(call_data.clone())
+    };
     
-    let nonce = nonce_manager.get_next_nonce(client.clone()).await.wrap_err("ALERT: Nonce fetch failed pre-submission")?;
+    let mut tx_request_typed: TypedTransaction = base_tx_request.into();
     
-    let balancer_contract = BalancerVault::new(config.balancer_vault_address, client.clone()); // Assuming H160
-    let calldata = balancer_contract
-        .flash_loan(
-            flash_loan_args.0,
-            flash_loan_args.1.clone(),
-            flash_loan_args.2.clone(),
-            flash_loan_args.3,
-        )
-        .calldata()
-        .ok_or_else(|| eyre!("ALERT: Calldata generation failed"))?;
-
-    let chain_id_u256 = client.inner().provider().get_chainid().await?;
-    let chain_id_u64 = U64::from(chain_id_u256.as_u64()); // Correct conversion
-    let mut tx_request = Eip1559TransactionRequest::new()
-        .to(config.balancer_vault_address) // Assuming H160
-        .data(calldata.clone())
-        .nonce(nonce)
-        .chain_id(chain_id_u64); 
-
-    // Corrected field name: e.g., submission_gas_limit_default
-    tx_request.gas = Some(config.submission_gas_limit_default.unwrap_or(GAS_LIMIT_DEFAULT).into()); 
-    tx_request.max_fee_per_gas = Some(gas_info.max_fee_per_gas);
-    tx_request.max_priority_fee_per_gas = Some(gas_info.max_priority_fee_per_gas);
-    
-    // Corrected field name: e.g., submission_gas_price_gwei_fixed
-    if let Some(gas_price_override_gwei) = config.submission_gas_price_gwei_fixed { 
-        let gas_price_override_wei = parse_units(gas_price_override_gwei, "gwei")?.into();
-        tx_request = tx_request.max_fee_per_gas(gas_price_override_wei).max_priority_fee_per_gas(gas_price_override_wei);
-        warn!("gas_price_gwei_override is set, using it for both max_fee and max_priority_fee.");
+    // Set gas limit
+    let gas_limit = config.submission_gas_limit_default.unwrap_or(GAS_LIMIT_DEFAULT);
+    match &mut tx_request_typed {
+        TypedTransaction::Legacy(tx) => tx.gas = Some(gas_limit.into()),
+        TypedTransaction::Eip1559(tx) => tx.gas = Some(gas_limit.into()),
+        TypedTransaction::Eip2930(tx) => tx.tx.gas = Some(gas_limit.into()),
+        _ => {} // Other types like EIP4844 might not use .gas directly
     }
 
-    let typed_tx: TypedTransaction = tx_request.into();
-
-    let signature = client.signer().sign_transaction(&typed_tx).await.wrap_err("ALERT: Signing failed pre-submission")?;
-    let rlp_signed = typed_tx.rlp_signed(&signature);
-    let rlp_hex_str = hex::encode(rlp_signed.as_ref()); 
-
-    // Corrected field name: e.g., submission_timeout_duration_seconds
-    match timeout(Duration::from_secs(config.submission_timeout_duration_seconds.unwrap_or(60)), submit_sequentially( config, client.provider(), client.clone(), &rlp_hex_str, &rlp_signed )).await { 
-        Ok(Ok(receipt_opt)) => {
-            if let Some(receipt) = receipt_opt { // receipt is TransactionReceipt
-                if receipt.status == Some(U64::from(1)) {
-                    info!(tx_hash=?receipt.transaction_hash, "✅ Arbitrage transaction successful!");
-                    nonce_manager.confirm_nonce_used(nonce).await;
-                    return Ok(receipt);
-                } else {
-                    error!(tx_hash=?receipt.transaction_hash, "❌ Arbitrage transaction failed on-chain (status 0).");
-                    nonce_manager.confirm_nonce_used(nonce).await;
-                    return Err(eyre!("Transaction {:?} failed on-chain (status 0)", receipt.transaction_hash));
-                }
-            } else {
-                 warn!("Transaction submission via all relays failed or timed out without a definitive receipt. Nonce status uncertain.");
-                 return Err(eyre!("Transaction submission failed via all relays."));
+    // Set gas price or EIP-1559 fees
+    if let Some(fixed_gas_price_gwei) = config.submission_gas_price_gwei_fixed {
+        let gas_price_wei = parse_units(fixed_gas_price_gwei, "gwei")?.into(); // Added ethers::utils::parse_units
+        match &mut tx_request_typed {
+            TypedTransaction::Legacy(tx) => tx.gas_price = Some(gas_price_wei),
+            TypedTransaction::Eip2930(tx) => tx.tx.gas_price = Some(gas_price_wei),
+            TypedTransaction::Eip1559(tx) => { // If fixed gas price is set, use it for EIP-1559 as well for simplicity
+                tx.max_fee_per_gas = Some(gas_price_wei);
+                tx.max_priority_fee_per_gas = Some(gas_price_wei); // Or a portion of it
             }
+            _ => {}
         }
-        Ok(Err(e)) => {
-            error!("Error during transaction submission sequence: {:?}", e);
-            if e.to_string().contains("nonce too low") || e.to_string().contains("replacement transaction underpriced") {
-                nonce_manager.handle_nonce_error().await;
+    } else { // EIP-1559 dynamic fees
+        let (max_fee, max_priority_fee) = client_for_submission_arc.estimate_eip1559_fees(None).await
+            .wrap_err("Failed to estimate EIP-1559 fees")?;
+        match &mut tx_request_typed {
+            TypedTransaction::Eip1559(tx) => {
+                tx.max_fee_per_gas = Some(max_fee);
+                tx.max_priority_fee_per_gas = Some(max_priority_fee);
             }
-            return Err(e.wrap_err("Transaction submission sequence failed"));
+            TypedTransaction::Legacy(_) | TypedTransaction::Eip2930(_) => {
+                // If not EIP1559, but no fixed_gas_price, we might need to fetch legacy gas price
+                let gas_price = client_for_submission_arc.get_gas_price().await?;
+                 match &mut tx_request_typed {
+                    TypedTransaction::Legacy(tx) => tx.gas_price = Some(gas_price),
+                    TypedTransaction::Eip2930(tx) => tx.tx.gas_price = Some(gas_price),
+                    _ => {} // Should not happen here
+                 }
+            }
+            _ => {}
         }
-        Err(_) => {
-            // Corrected field name
-            error!("Transaction submission timed out after {} seconds.", config.submission_timeout_duration_seconds.unwrap_or(60)); 
-            nonce_manager.handle_nonce_error().await;
-            return Err(eyre!("Transaction submission timed out overall."));
-        }
+    }
+    
+    // Nonce will be handled by the NonceManager in client_for_submission_arc
+
+    match timeout(
+        Duration::from_secs(config.submission_timeout_duration_seconds.unwrap_or(60)), 
+        submit_sequentially(config, client_for_submission_arc.clone(), tx_request_typed, wallet_address, chain_id_u64) // Pass client_for_submission_arc directly
+    ).await {
+        Ok(Ok(receipt_option)) => Ok(receipt_option),
+        Ok(Err(e)) => Err(e.wrap_err("Transaction submission attempt failed")),
+        Err(_) => Err(eyre!("Transaction submission timed out overall")),
     }
 }
 
-pub async fn submit_sequentially<P: Middleware>(
+
+// submit_sequentially now takes the client with NonceManager
+pub async fn submit_sequentially<P, S>( 
     config: &Config,
-    provider: &P,
-    client_for_receipt: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
-    rlp_hex: &str, // Pass as string
-    _rlp_bytes: &Bytes 
+    client_with_nonce_mgr: Arc<NonceManagerMiddleware<SignerMiddleware<P, S>>>, 
+    tx_request: TypedTransaction,
+    _wallet_address: Address, 
+    _chain_id: u64 
 ) -> Result<Option<TransactionReceipt>> 
-where <P as Middleware>::Error: StdError + Send + Sync + 'static {
-    // Corrected field name: e.g., transaction_relay_urls
-    let configured_relays = config.transaction_relay_urls.clone().unwrap_or_default(); 
-    if configured_relays.is_empty() {
-        info!("No relays configured. Submitting directly to provider.");
-        // rlp_hex already includes "0x" if it's from hex::encode and formatted that way.
-        // If not, Bytes::from_hex expects no "0x" prefix.
-        let bytes_to_send = Bytes::from_hex(rlp_hex.strip_prefix("0x").unwrap_or(rlp_hex))
-            .map_err(|e| eyre!("Failed to decode RLP hex for direct submission: {}", e))?;
+    where 
+        P: Middleware + 'static,
+        S: Signer + 'static,
+        <P as Middleware>::Error: StdErrorTrait + Send + Sync + 'static, 
+        <S as Signer>::Error: StdErrorTrait + Send + Sync + 'static, // Added bound for Signer error
+        P::Provider: Send + Sync,
+        NonceManagerMiddleware<SignerMiddleware<P, S>>: Middleware<Provider = P::Provider, Error = NonceManagerError<SignerMiddleware<P,S>>>, // Correct Error type
+        NonceManagerError<SignerMiddleware<P,S>>: StdErrorTrait + Send + Sync + 'static // Ensure NonceManagerError is StdError
+{
+    let mut final_tx_request = tx_request.clone();
+    // Ensure chain_id is set if not already (NonceManager client should handle this, but double check)
+    if final_tx_request.chain_id().is_none() {
+        final_tx_request.set_chain_id(_chain_id);
+    }
 
-        match provider.send_raw_transaction(bytes_to_send).await {
-            Ok(pending_tx) => {
-                let tx_hash = pending_tx.tx_hash();
-                info!(?tx_hash, "Transaction submitted directly, awaiting receipt...");
-                // Wait for receipt
-                match client_for_receipt.get_transaction_receipt(tx_hash).await.wrap_err("Failed to get receipt for direct submission") {
-                    Ok(Some(receipt)) => return Ok(Some(receipt)),
-                    Ok(None) => {
-                        warn!(?tx_hash, "Direct submission: No receipt after waiting (tx might be pending or dropped).");
-                        return Ok(None); // Or Err if no receipt is unacceptable
-                    }
-                    Err(e) => {
-                        error!(?tx_hash, error=?e, "Direct submission: Error waiting for receipt.");
-                        return Err(e);
+
+    // Attempt direct submission first
+    debug!("Attempting direct transaction submission...");
+    let pending_tx_fut = client_with_nonce_mgr.send_transaction(final_tx_request.clone(), None);
+    
+    match timeout(Duration::from_secs(config.submission_timeout_duration_seconds.unwrap_or(15)), pending_tx_fut).await {
+        Ok(Ok(pending_tx)) => { // Successfully sent
+            let tx_hash = pending_tx.tx_hash();
+            debug!("Transaction submitted directly, hash: {:?}", tx_hash);
+
+            match timeout(
+                Duration::from_secs(config.submission_timeout_duration_seconds.unwrap_or(30)),
+                client_with_nonce_mgr.get_transaction_receipt(tx_hash)
+            ).await {
+                Ok(Ok(Some(receipt))) => {
+                    if receipt.status == Some(TX_SUCCESS_STATUS) {
+                        info!(tx_hash = ?receipt.transaction_hash, block = ?receipt.block_number, "✅ Transaction confirmed successfully!");
+                        return Ok(Some(receipt));
+                    } else {
+                        error!(tx_hash = ?receipt.transaction_hash, block = ?receipt.block_number, "❌ Transaction failed (status 0)!");
+                        return Ok(Some(receipt)); // Return receipt for inspection
                     }
                 }
+                Ok(Ok(None)) => warn!(%tx_hash, "Direct submission receipt not found after timeout (still pending or dropped)."),
+                Ok(Err(e)) => error!(%tx_hash, error = ?e, "Error waiting for direct submission receipt."),
+                Err(_) => warn!(%tx_hash, "Timeout waiting for direct submission receipt."),
             }
-            Err(e) => {
-                error!(error=?e, "Direct transaction submission failed.");
-                return Err(eyre!(e).wrap_err("Direct transaction submission failed"));
+        }
+        Ok(Err(e)) => { // Error during send_transaction itself
+            error!("Direct transaction submission failed: {:?}", e);
+            // NonceManager should handle nonce increment failures, but if send_transaction itself fails before mempool, nonce might not be consumed.
+            // This depends on NonceManager's internal logic.
+        }
+        Err(_) => { // Timeout during send_transaction
+            warn!("Direct transaction submission timed out.");
+        }
+    }
+    
+    // Fallback to private relay if configured and direct submission didn't confirm quickly
+    if let Some(relay_urls) = &config.transaction_relay_urls {
+        if relay_urls.is_empty() {
+            return Ok(None); // No relays to try
+        }
+        let rlp_encoded_tx = final_tx_request.rlp();
+        for url_str in relay_urls {
+            match Provider::<Http>::try_from(url_str.as_str()) {
+                Ok(relay_provider) => {
+                    info!("Attempting to send private transaction via relay: {}", url_str);
+                    let send_fut = relay_provider.send_raw_transaction(rlp_encoded_tx.clone()); 
+                    match timeout(Duration::from_secs(10), send_fut).await { 
+                        Ok(Ok(pending_tx_from_relay)) => { // pending_tx_from_relay is PendingTransaction
+                            let tx_hash: H256 = pending_tx_from_relay.tx_hash(); // Get H256 tx_hash
+                            info!("Transaction sent to relay {}, tx_hash: {:?}", url_str, tx_hash);
+                            // After sending to relay, wait for receipt using the main client
+                            match timeout(
+                                Duration::from_secs(config.submission_timeout_duration_seconds.unwrap_or(30)),
+                                client_with_nonce_mgr.get_transaction_receipt(tx_hash)
+                            ).await {
+                                Ok(Ok(Some(receipt))) => {
+                                    if receipt.status == Some(TX_SUCCESS_STATUS) {
+                                        info!(tx_hash = ?receipt.transaction_hash, block = ?receipt.block_number, "✅ Relay transaction confirmed!");
+                                        return Ok(Some(receipt));
+                                    } else {
+                                        error!(tx_hash = ?receipt.transaction_hash, block = ?receipt.block_number, "❌ Relay transaction failed!");
+                                        // Don't return here, try next relay or fail
+                                    }
+                                }
+                                Ok(Ok(None)) => warn!(%tx_hash, relay_url = %url_str, "Relay submission receipt not found."),
+                                Ok(Err(e)) => error!(%tx_hash, relay_url = %url_str, error = ?e, "Error waiting for relay receipt."),
+                                Err(_) => warn!(%tx_hash, relay_url = %url_str, "Timeout waiting for relay receipt."),
+                            }
+                        }
+                        Ok(Err(e)) => error!("Failed to send transaction to relay {}: {:?}", url_str, e),
+                        Err(_) => warn!("Timeout sending transaction to relay {}", url_str),
+                    }
+                }
+                Err(e) => error!("Failed to create provider for relay URL {}: {:?}", url_str, e),
             }
         }
     }
+    warn!("Transaction submission failed after all attempts or no relays configured.");
+    Ok(None) 
+}
 
-    for relay_url in &configured_relays { // Use corrected variable
-        info!("Attempting submission via relay: {}", relay_url);
-        // This part needs a proper RPC client for eth_sendRawTransactionJsonRpc
-        // For simplicity, assuming a generic HTTP client or a specialized RPC client
-        // Placeholder for actual relay submission logic:
-        // let response = http_client.post(relay_url).json({"jsonrpc":"2.0","method":"eth_sendRawTransaction","params":[rlp_hex],"id":1}).send().await;
-        // match response { Ok(res) if res.status().is_success() => { let tx_hash = ...; return Ok(tx_hash_from_relay_response) } ... }
-        warn!("Relay submission logic is a placeholder for URL: {}", relay_url);
+// Define a helper error wrapper
+// This ProviderErrorWrapper is for wrapping errors from the *inner* SignerMiddleware
+// when we are not using NonceManagerMiddleware directly, or for custom error handling.
+// For submit_sequentially, NonceManagerError is the direct error type.
+#[derive(Error, Debug)] // Use thiserror::Error
+pub enum ProviderErrorWrapper<MError, SError> 
+where
+    MError: StdErrorTrait + Send + Sync + 'static,
+    SError: StdErrorTrait + Send + Sync + 'static,
+{
+    #[error("Middleware error: {0}")] // Use #[error] from thiserror
+    Middleware(MError),
+    #[error("Signer error: {0}")]
+    Signer(SError),
+    #[error("Ethers Provider error: {0}")]
+    Provider(#[from] EthersProviderError), // Use #[from] for direct conversion
+    #[error("Custom error: {0}")]
+    Custom(String),
+}
+
+// This From impl is for SignerMiddlewareError -> ProviderErrorWrapper
+impl<M, S> From<SignerMiddlewareError<M, S>> for ProviderErrorWrapper<<M as Middleware>::Error, <S as Signer>::Error>
+where
+    M: Middleware + 'static,
+    S: Signer + 'static,
+    <M as Middleware>::Error: StdErrorTrait + Send + Sync + 'static,
+    <S as Signer>::Error: StdErrorTrait + Send + Sync + 'static,
+{
+    fn from(err: SignerMiddlewareError<M, S>) -> Self {
+        match err {
+            SignerMiddlewareError::MiddlewareError(e) => ProviderErrorWrapper::Middleware(e),
+            SignerMiddlewareError::SignerError(e) => ProviderErrorWrapper::Signer(e),
+            // SignerMiddlewareError itself doesn't have a direct ProviderError variant like that.
+            // It has NonceMissing, GasPriceMissing etc. which are more specific.
+            SignerMiddlewareError::NonceMissing => ProviderErrorWrapper::Custom("NonceMissing from SignerMiddlewareError".to_string()),
+            SignerMiddlewareError::GasPriceMissing => ProviderErrorWrapper::Custom("GasPriceMissing from SignerMiddlewareError".to_string()),
+            SignerMiddlewareError::GasMissing => ProviderErrorWrapper::Custom("GasMissing from SignerMiddlewareError".to_string()),
+            // Other variants of SignerMiddlewareError might need specific handling or mapping to Custom/Provider
+            // For example, if there was an internal EthersProviderError, it would be wrapped in MiddlewareError typically.
+            e => ProviderErrorWrapper::Custom(format!("Unhandled SignerMiddlewareError: {}", e)),
+        }
     }
-    Ok(None) // If all relays fail
 }
 
-async fn send_alchemy_private_tx( provider: &Provider<Http>, rlp_hex: &str ) -> Result<TxHash> {
-    let method="alchemy_sendPrivateTransaction";
-    let params=AlchemyPrivateTxParams{tx:rlp_hex};
-    provider.request(method, [serde_json::to_value(params)?]).await
-        .map_err(|e|eyre!("Alchemy RPC error: {}", e.to_string()))
+// This From impl is for SignerMiddlewareError<Provider<Http>, LocalWallet> -> ProviderErrorWrapper
+impl<MError, SError> From<SignerMiddlewareError<Provider<Http>, LocalWallet>> for ProviderErrorWrapper<MError, SError>
+where
+    MError: StdErrorTrait + Send + Sync + 'static,
+    SError: StdErrorTrait + Send + Sync + 'static,
+    <Provider<Http> as Middleware>::Error: Into<MError>,
+    <LocalWallet as Signer>::Error: Into<SError>,
+{
+    fn from(err: SignerMiddlewareError<Provider<Http>, LocalWallet>) -> Self {
+        match err {
+            SignerMiddlewareError::MiddlewareError(e) => ProviderErrorWrapper::Middleware(e.into()),
+            SignerMiddlewareError::SignerError(e) => ProviderErrorWrapper::Signer(e.into()),
+            SignerMiddlewareError::ProviderError(e) => ProviderErrorWrapper::Provider(e.into()), // Use .into()
+            SignerMiddlewareError::NonceMissing => ProviderErrorWrapper::Provider(EthersProviderError::CustomError("NonceMissing from SignerMiddlewareError".to_string())),
+            SignerMiddlewareError::GasPriceMissing => ProviderErrorWrapper::Provider(EthersProviderError::CustomError("GasPriceMissing from SignerMiddlewareError".to_string())),
+            SignerMiddlewareError::GasMissing => ProviderErrorWrapper::Provider(EthersProviderError::CustomError("GasMissing from SignerMiddlewareError".to_string())),
+            SignerMiddlewareError::UnsupportedTxType(s) => ProviderErrorWrapper::Provider(EthersProviderError::CustomError(format!("UnsupportedTxType: {}",s))),
+            SignerMiddlewareError::SignatureError(e) => ProviderErrorWrapper::Signer(e.into()),
+        }
+    }
 }
-async fn send_flashbots_private_tx( provider: &Provider<Http>, rlp_hex: &str ) -> Result<TxHash> {
-    let method="eth_sendPrivateRawTransaction";
-    let params=[rlp_hex];
-    provider.request(method,params).await
-        .map_err(|e|eyre!("Flashbots RPC error: {}", e.to_string()))
-}
+

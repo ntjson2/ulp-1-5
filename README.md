@@ -16,6 +16,14 @@ cargo clean
 cargo run --bin ulp1_5
 ```
 
+### WSL Shell Script Line Endings
+If you encounter errors like `/usr/bin/env: ‘bash\r’: No such file or directory` when running shell scripts (`.sh` files) that were created or edited on Windows, it's likely due to Windows (CRLF) line endings. Convert them to Unix (LF) line endings using:
+```bash
+sudo apt-get install dos2unix  # If not already installed
+dos2unix your_script_name.sh
+```
+Alternatively, ensure your text editor (like VS Code) is set to save files with LF line endings.
+
 ## Fire Up Anvil - Optimism
 ```bash
 anvil --fork-url https://mainnet.optimism.io
@@ -48,3 +56,8 @@ Use [Foundry's Anvil](https://book.getfoundry.sh/anvil/) for local forking and l
 ```bash
 anvil --fork-url https://mainnet.optimism.io --chain-id 10
 ```
+
+## Gotchas
+dos2unix p1_loop.sh
+chmod +x p1_loop.sh
+./p1_loop.sh

@@ -102,21 +102,22 @@ The core Rust application and Huff contract have been architected to support the
 *   **MU2.1 - Core State & Cache:** **Complete.**
 *   **MU2.2 - Pathfinding & Simulation:** **Complete** (with placeholder for UniV3 dynamic sizing).
 *   **MU2.3 - Huff v2 (`minProfitWei`) & Private Transactions:** **Complete** (Huff compiled, tx logic implemented).
-*   **MU2.4 - Deployment, Monitoring & Basic DEX Expansion:** **In Progress (Testing Phase).** Core logic built, health checks added. Needs comprehensive Anvil test execution, refinement based on testing, initial deployment trial, and enhanced monitoring/alerting. Velo/Aero support added.
+*   **MU2.4 - Deployment, Monitoring & Basic DEX Expansion:** **In Progress (Testing Phase).** Core logic built, health checks added. `p1_loop.sh` for running `run_me.sh` is now operational. Needs comprehensive Anvil test execution via `run_me.sh`, refinement based on testing, initial deployment trial, and enhanced monitoring/alerting. Velo/Aero support added.
 *   **MU2.5+ (Phase 2 Prep):** **Not Started.**
 
 ---
 
 ## 7. Current Status & Next Steps
 
-*   **Status:** The core Rust application and Huff contract are implemented. Code compiles cleanly (`cargo check`). Integration test structure exists. Focus has been on fixing compilation issues (Rust & Huff) and implementing the sequential test cycle.
-*   **Estimated Overall Completion:** ~89% (core dev done, testing needed).
+*   **Status:** The core Rust application and Huff contract are implemented. Code compiles cleanly (`cargo check`). Integration test structure exists. `p1_loop.sh` script execution issues (line endings, permissions, execution path) have been resolved, enabling the primary test execution script `run_me.sh` to be invoked.
+*   **Estimated Overall Completion:** ~90% (core dev done, initial test script `p1_loop.sh` operational, full `run_me.sh` execution and subsequent testing cycles pending).
 *   **IMMEDIATE NEXT STEP:**  
-    1. **Execute Anvil Integration Tests:**  
+    1. **Execute `p1_loop.sh`:**
        ```bash
-       cargo test --features local_simulation -- --ignored --nocapture
-       ```  
-    2. **Implement WS Event Loop Test:**  
-       Develop and run `run_event_loop_ws_test` to validate real-time WS event handling and arbitrage triggering.
-*   **Near-Term:** Refine based on test results, implement external alerting, prepare cloud VPS deployment and monitoring.
+       ./p1_loop.sh
+       ```
+       This will run `run_me.sh` and output results to `results.txt`.
+    2. **Analyze `results.txt`:** If `run_me.sh` (which includes `cargo build` and `cargo test`) produces errors, use `results.txt` with a `j9 go` command for fixes.
+    3. **If `run_me.sh` is successful (all tests pass):** Proceed to implement/verify the WS Event Loop Test (`run_event_loop_ws_test`) to validate real-time WS event handling and arbitrage triggering.
+*   **Near-Term:** Refine based on test results from `run_me.sh` and WS loop testing, implement external alerting, prepare cloud VPS deployment and monitoring.
 *   **Future:** Address lower-priority TODOs (UniV3 sizing), add more DEXs, explore Phase 2 infrastructure.

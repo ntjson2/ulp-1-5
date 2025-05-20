@@ -1,3 +1,2347 @@
 🔌 Spawning anvil …
+⏳ Waiting for Anvil RPC at http://127.0.0.1:8545...
+✅ Anvil is ready.
+🚀 Deploying ArbitrageExecutor …
+✅ ArbitrageExecutor deployed to 0x8e45c0936fa1a65bdad3222befec6a03c83372ce
+🧪 Running integration tests …
+   Compiling ulp1_5 v0.1.0 (/mnt/c/Users/Lenovo/Documents/BUSINESS/QUETZAL COLLECTIVE LLC/ULP/ulp-1.5)
+error[E0428]: the name `calculate_gas_cost_for_flash_loan` is defined multiple times
+    --> bot/src/simulation.rs:1135:1
+     |
+475  | / async fn calculate_gas_cost_for_flash_loan(
+476  | |     app_state: Arc<AppState>,
+477  | |     client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
+478  | |     route: &RouteDetails,
+...    |
+554  | |     Ok(gas_cost)
+555  | | }
+     | |_- previous definition of the value `calculate_gas_cost_for_flash_loan` here
+...
+1135 | / async fn calculate_gas_cost_for_flash_loan(
+1136 | |     app_state: Arc<AppState>,
+1137 | |     client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
+1138 | |     route: &RouteDetails,
+...    |
+1214 | |     Ok(gas_cost)
+1215 | | }
+     | |_^ `calculate_gas_cost_for_flash_loan` redefined here
+     |
+     = note: `calculate_gas_cost_for_flash_loan` must be defined only once in the value namespace of this module
 
-🛑 Shutting down anvil (pid 8679)…
+error[E0428]: the name `get_balancer_vault` is defined multiple times
+    --> bot/src/simulation.rs:1351:1
+     |
+691  | / fn get_balancer_vault(
+692  | |     config: &Config, 
+693  | |     client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
+694  | | ) -> Result<crate::bindings::balancer_vault::BalancerVault<SignerMiddleware<Provider<Http>, LocalWallet>>> { 
+695  | |     let balancer_vault_addr = config.balancer_vault_address.ok_or_else(|| eyre!("Balancer vault address not configured"))?; 
+696  | |     Ok(crate::bindings::balancer_vault::BalancerVault::new(balancer_vault_addr, client.clone()))
+697  | | }
+     | |_- previous definition of the value `get_balancer_vault` here
+...
+1351 | / fn get_balancer_vault(
+1352 | |     config: &Config, 
+1353 | |     client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
+1354 | | ) -> Result<crate::bindings::balancer_vault::BalancerVault<SignerMiddleware<Provider<Http>, LocalWallet>>> { 
+1355 | |     let balancer_vault_addr = config.balancer_vault_address.ok_or_else(|| eyre!("Balancer vault address not configured"))?; 
+1356 | |     Ok(crate::bindings::balancer_vault::BalancerVault::new(balancer_vault_addr, client.clone()))
+1357 | | }
+     | |_^ `get_balancer_vault` redefined here
+     |
+     = note: `get_balancer_vault` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `get_quoter_router_address` is defined multiple times
+    --> bot/src/simulation.rs:1360:1
+     |
+700  | / fn get_quoter_router_address(
+701  | |     config: &Config, 
+702  | |     dex_type: DexType,
+703  | | ) -> Result<Address> {
+...    |
+709  | | }
+     | |_- previous definition of the value `get_quoter_router_address` here
+...
+1360 | / fn get_quoter_router_address(
+1361 | |     config: &Config, 
+1362 | |     dex_type: DexType,
+1363 | | ) -> Result<Address> {
+...    |
+1369 | | }
+     | |_^ `get_quoter_router_address` redefined here
+     |
+     = note: `get_quoter_router_address` must be defined only once in the value namespace of this module
+
+error: unexpected named parameter
+  --> bot/src/bindings.rs:15:5
+   |
+15 |     event_aliases(Swap = IUniswapV3PoolSwap) // Corrected syntax
+   |     ^^^^^^^^^^^^^
+
+error: unexpected named parameter
+  --> bot/src/bindings.rs:22:5
+   |
+22 |     event_aliases(Swap = UniswapV3PoolSwap) // Corrected syntax
+   |     ^^^^^^^^^^^^^
+
+error: unexpected named parameter
+  --> bot/src/bindings.rs:41:5
+   |
+41 |     event_aliases(Swap = VelodromeV2PoolSwap) // Corrected syntax
+   |     ^^^^^^^^^^^^^
+
+error: unexpected named parameter
+  --> bot/src/bindings.rs:48:5
+   |
+48 |     event_aliases(Swap = AerodromePoolSwap) // Corrected syntax
+   |     ^^^^^^^^^^^^^
+
+error: unexpected named parameter
+  --> bot/src/bindings.rs:67:5
+   |
+67 |     event_aliases(PoolCreated = IUniswapV3FactoryPoolCreated) // Corrected syntax
+   |     ^^^^^^^^^^^^^
+
+error: unexpected named parameter
+  --> bot/src/bindings.rs:74:5
+   |
+74 |     event_aliases(PoolCreated = IVelodromeFactoryPoolCreated) // Corrected syntax
+   |     ^^^^^^^^^^^^^
+
+error[E0428]: the name `simulate_swap` is defined multiple times
+   --> bot/src/simulation.rs:711:1
+    |
+50  |   #[instrument(skip(app_state, client), level = "trace", fields(pool_address = %pool_address, dex = %dex_type, token_in = %token_in, token_out = %token_out, amount_in = %amount_in))]
+    |   ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ previous definition of the value `simulate_swap` here
+...
+711 | / pub async fn simulate_swap(
+712 | |     app_state: Arc<AppState>,
+713 | |     client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
+714 | |     pool_address: Address, // This is the pool_address parameter
+...   |
+791 | | }
+    | |_^ `simulate_swap` redefined here
+    |
+    = note: `simulate_swap` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `find_optimal_loan_amount` is defined multiple times
+   --> bot/src/simulation.rs:628:1
+    |
+262 | #[instrument(skip_all, level = "info", fields( route = ?route ))]
+    | ----------------------------------------------------------------- previous definition of the value `find_optimal_loan_amount` here
+...
+628 | #[instrument(skip_all, fields(route_id = %route.id()))]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `find_optimal_loan_amount` redefined here
+    |
+    = note: `find_optimal_loan_amount` must be defined only once in the value namespace of this module
+    = note: this error originates in the attribute macro `instrument` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0428]: the name `simulate_calculate_net_profit_wei` is defined multiple times
+   --> bot/src/simulation.rs:795:1
+    |
+135 | #[instrument(skip(app_state, client, route), level = "debug", fields( loan_amount_wei = %amount_in_wei ))]
+    | ---------------------------------------------------------------------------------------------------------- previous definition of the value `simulate_calculate_net_profit_wei` here
+...
+795 | #[instrument(skip(app_state, client, route), level = "debug", fields( loan_amount_wei = %amount_in_wei ))]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `simulate_calculate_net_profit_wei` redefined here
+    |
+    = note: `simulate_calculate_net_profit_wei` must be defined only once in the value namespace of this module
+    = note: this error originates in the attribute macro `instrument` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0428]: the name `find_optimal_loan_amount` is defined multiple times
+   --> bot/src/simulation.rs:922:1
+    |
+262 | #[instrument(skip_all, level = "info", fields( route = ?route ))]
+    | ----------------------------------------------------------------- previous definition of the value `find_optimal_loan_amount` here
+...
+922 | #[instrument(skip_all, level = "info", fields( route = ?route ))]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `find_optimal_loan_amount` redefined here
+    |
+    = note: `find_optimal_loan_amount` must be defined only once in the value namespace of this module
+    = note: this error originates in the attribute macro `instrument` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0428]: the name `dynamic_max_loan_weth` is defined multiple times
+    --> bot/src/simulation.rs:1004:1
+     |
+344  | #[instrument(level="trace", skip(app_state, route, config))]
+     | ------------------------------------------------------------ previous definition of the value `dynamic_max_loan_weth` here
+...
+1004 | #[instrument(level="trace", skip(app_state, route, config))]
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `dynamic_max_loan_weth` redefined here
+     |
+     = note: `dynamic_max_loan_weth` must be defined only once in the value namespace of this module
+     = note: this error originates in the attribute macro `instrument` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0428]: the name `get_amount_out` is defined multiple times
+    --> bot/src/simulation.rs:1064:1
+     |
+404  | #[instrument(level="trace", skip(app_state, client), fields(pool=%pool_address, token_in=%token_in, token_out=%token_out, amount_in=%amount_in))]
+     | ------------------------------------------------------------------------------------------------------------------------------------------------- previous definition of the value `get_amount_out` here
+...
+1064 | #[instrument(level="trace", skip(app_state, client), fields(pool=%pool_address, token_in=%token_in, token_out=%token_out, amount_in=%amount_in))]
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `get_amount_out` redefined here
+     |
+     = note: `get_amount_out` must be defined only once in the value namespace of this module
+     = note: this error originates in the attribute macro `instrument` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0428]: the name `simulate_swap_profit` is defined multiple times
+    --> bot/src/simulation.rs:1218:1
+     |
+558  | #[instrument(level="trace", skip(app_state, client, route), fields(route_id = %route.id(), loan_amount_wei = %loan_amount_wei))]
+     | -------------------------------------------------------------------------------------------------------------------------------- previous definition of the value `simulate_swap_profit` here
+...
+1218 | #[instrument(level="trace", skip(app_state, client, route), fields(route_id = %route.id(), loan_amount_wei = %loan_amount_wei))]
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `simulate_swap_profit` redefined here
+     |
+     = note: `simulate_swap_profit` must be defined only once in the value namespace of this module
+     = note: this error originates in the attribute macro `instrument` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0428]: the name `find_optimal_loan_amount` is defined multiple times
+    --> bot/src/simulation.rs:1288:1
+     |
+262  | #[instrument(skip_all, level = "info", fields( route = ?route ))]
+     | ----------------------------------------------------------------- previous definition of the value `find_optimal_loan_amount` here
+...
+1288 | #[instrument(skip_all, fields(route_id = %route.id()))]
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `find_optimal_loan_amount` redefined here
+     |
+     = note: `find_optimal_loan_amount` must be defined only once in the value namespace of this module
+     = note: this error originates in the attribute macro `instrument` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0432]: unresolved import `ethers::core::types::RawLog`
+  --> bot/src/event_handler.rs:23:41
+   |
+23 |     core::types::{Address, Filter, Log, RawLog, H160, H256, U256, U64}, // Added RawLog
+   |                                         ^^^^^^ no `RawLog` in `types`
+   |
+   = help: consider importing this struct instead:
+           ethers::abi::RawLog
+
+error[E0432]: unresolved import `crate::state::PoolInfo`
+  --> bot/src/event_handler.rs:13:39
+   |
+13 | use crate::state::{AppState, DexType, PoolInfo, PoolSnapshot}; // Removed RouteDetails as unused
+   |                                       ^^^^^^^^ no `PoolInfo` in `state`
+
+error[E0432]: unresolved imports `crate::state::PoolInfo`, `crate::state::RouteDetails`
+  --> bot/src/simulation.rs:14:32
+   |
+14 |     state::{AppState, DexType, PoolInfo, PoolSnapshot, RouteDetails},
+   |                                ^^^^^^^^                ^^^^^^^^^^^^ no `RouteDetails` in `state`
+   |                                |
+   |                                no `PoolInfo` in `state`
+
+error[E0432]: unresolved import `crate::state::RouteDetails`
+  --> bot/src/transaction.rs:24:22
+   |
+24 |     state::{DexType, RouteDetails},
+   |                      ^^^^^^^^^^^^ no `RouteDetails` in `state`
+
+error: cannot find derive macro `Serialize` in this scope
+  --> bot/src/transaction.rs:32:10
+   |
+32 | #[derive(Serialize, Debug)] // Added Serialize
+   |          ^^^^^^^^^
+   |
+help: consider importing this derive macro
+   |
+3  + use serde::Serialize;
+   |
+
+error: cannot find macro `error` in this scope
+   --> bot/src/transaction.rs:297:25
+    |
+297 |                         error!(tx_hash = ?receipt.transaction_hash, block = ?receipt.block_number, "❌ Transaction failed (status 0)!");
+    |                         ^^^^^
+    |
+help: consider importing this macro
+    |
+3   + use tracing::error;
+    |
+
+error: cannot find macro `error` in this scope
+   --> bot/src/transaction.rs:302:31
+    |
+302 |                 Ok(Err(e)) => error!(%tx_hash, error = ?e, "Error waiting for direct submission receipt."),
+    |                               ^^^^^
+    |
+help: consider importing this macro
+    |
+3   + use tracing::error;
+    |
+
+error: cannot find macro `error` in this scope
+   --> bot/src/transaction.rs:307:13
+    |
+307 |             error!("Direct transaction submission failed: {:?}", e);
+    |             ^^^^^
+    |
+help: consider importing this macro
+    |
+3   + use tracing::error;
+    |
+
+error: cannot find macro `error` in this scope
+   --> bot/src/transaction.rs:341:41
+    |
+341 | ...                   error!(tx_hash = ?receipt.transaction_hash, block = ?receipt.block_number, "❌ Relay transaction failed!");
+    |                       ^^^^^
+    |
+help: consider importing this macro
+    |
+3   + use tracing::error;
+    |
+
+error: cannot find macro `error` in this scope
+   --> bot/src/transaction.rs:346:47
+    |
+346 | ...                   Ok(Err(e)) => error!(%tx_hash, relay_url = %url_str, error = ?e, "Error waiting for relay receipt."),
+    |                                     ^^^^^
+    |
+help: consider importing this macro
+    |
+3   + use tracing::error;
+    |
+
+error: cannot find macro `error` in this scope
+   --> bot/src/transaction.rs:350:39
+    |
+350 |                         Ok(Err(e)) => error!("Failed to send transaction to relay {}: {:?}", url_str, e),
+    |                                       ^^^^^
+    |
+help: consider importing this macro
+    |
+3   + use tracing::error;
+    |
+
+error: cannot find macro `error` in this scope
+   --> bot/src/transaction.rs:354:27
+    |
+354 |                 Err(e) => error!("Failed to create provider for relay URL {}: {:?}", url_str, e),
+    |                           ^^^^^
+    |
+help: consider importing this macro
+    |
+3   + use tracing::error;
+    |
+
+error[E0433]: failed to resolve: could not find `i_uniswap_v3_factory` in `bindings`
+  --> bot/src/event_handler.rs:52:32
+   |
+52 |         match crate::bindings::i_uniswap_v3_factory::IUniswapV3FactoryPoolCreatedFilter::decode_log(&RawLog::from(log.clone())) {
+   |                                ^^^^^^^^^^^^^^^^^^^^ could not find `i_uniswap_v3_factory` in `bindings`
+
+error[E0433]: failed to resolve: could not find `i_velodrome_factory` in `bindings`
+  --> bot/src/event_handler.rs:68:32
+   |
+68 |         match crate::bindings::i_velodrome_factory::IVelodromeFactoryPoolCreatedFilter::decode_log(&RawLog::from(log.clone())) { 
+   |                                ^^^^^^^^^^^^^^^^^^^ could not find `i_velodrome_factory` in `bindings`
+
+error[E0433]: failed to resolve: could not find `i_uniswap_v3_pool` in `bindings`
+  --> bot/src/event_handler.rs:94:32
+   |
+94 |         match crate::bindings::i_uniswap_v3_pool::IUniswapV3PoolSwapFilter::decode_log(&RawLog::from(log.clone())) {
+   |                                ^^^^^^^^^^^^^^^^^ could not find `i_uniswap_v3_pool` in `bindings`
+
+error[E0433]: failed to resolve: could not find `velodrome_v2_pool` in `bindings`
+   --> bot/src/event_handler.rs:118:44
+    |
+118 |                     match crate::bindings::velodrome_v2_pool::VelodromeV2PoolSwapFilter::decode_log(&RawLog::from(log.clone())) {
+    |                                            ^^^^^^^^^^^^^^^^^ could not find `velodrome_v2_pool` in `bindings`
+
+error[E0433]: failed to resolve: could not find `aerodrome_pool` in `bindings`
+   --> bot/src/event_handler.rs:139:44
+    |
+139 |                     match crate::bindings::aerodrome_pool::AerodromePoolSwapFilter::decode_log(&RawLog::from(log.clone())) {
+    |                                            ^^^^^^^^^^^^^^ could not find `aerodrome_pool` in `bindings`
+
+error[E0433]: failed to resolve: could not find `uniswap_v3_pool` in `bindings`
+   --> bot/src/state.rs:220:50
+    |
+220 |             let pool_contract = crate::bindings::uniswap_v3_pool::UniswapV3Pool::new(pool_addr, rpc_client.clone());
+    |                                                  ^^^^^^^^^^^^^^^ could not find `uniswap_v3_pool` in `bindings`
+
+error[E0433]: failed to resolve: could not find `i_uniswap_v3_pool` in `bindings`
+   --> bot/src/state.rs:228:101
+    |
+228 |             let (t0_res, t1_res, fee_res, slot0_data_val): (Address, Address, u32, crate::bindings::i_uniswap_v3_pool::Slot0Output) = 
+    |                                                                                                     ^^^^^^^^^^^^^^^^^ could not find `i_uniswap_v3_pool` in `bindings`
+
+error[E0433]: failed to resolve: could not find `uniswap_v3_pool` in `bindings`
+   --> bot/src/state.rs:398:50
+    |
+398 |             let pool_contract = crate::bindings::uniswap_v3_pool::UniswapV3Pool::new(pool_addr, client.clone());
+    |                                                  ^^^^^^^^^^^^^^^ could not find `uniswap_v3_pool` in `bindings`
+
+error[E0433]: failed to resolve: could not find `i_uniswap_v3_pool` in `bindings`
+   --> bot/src/state.rs:399:50
+    |
+399 |             let slot0_data_val: crate::bindings::i_uniswap_v3_pool::Slot0Output = pool_contract.slot_0().call().await?;
+    |                                                  ^^^^^^^^^^^^^^^^^ could not find `i_uniswap_v3_pool` in `bindings`
+
+error[E0433]: failed to resolve: could not find `velodrome_v2_pool` in `bindings`
+   --> bot/src/state.rs:408:50
+    |
+408 |             let pool_contract = crate::bindings::velodrome_v2_pool::VelodromeV2Pool::new(pool_addr, client.clone());
+    |                                                  ^^^^^^^^^^^^^^^^^ could not find `velodrome_v2_pool` in `bindings`
+
+error[E0433]: failed to resolve: could not find `aerodrome_pool` in `bindings`
+   --> bot/src/state.rs:433:50
+    |
+433 |             let pool_contract = crate::bindings::aerodrome_pool::AerodromePool::new(pool_addr, client.clone());
+    |                                                  ^^^^^^^^^^^^^^ could not find `aerodrome_pool` in `bindings`
+
+error[E0425]: cannot find value `min_profit_threshold_wei` in this scope
+   --> bot/src/config.rs:238:9
+    |
+238 |         min_profit_threshold_wei, max_gas_price_gwei, max_slippage_bps,
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `max_gas_price_gwei` in this scope
+   --> bot/src/config.rs:238:35
+    |
+238 |         min_profit_threshold_wei, max_gas_price_gwei, max_slippage_bps,
+    |                                   ^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `max_slippage_bps` in this scope
+   --> bot/src/config.rs:238:55
+    |
+238 |         min_profit_threshold_wei, max_gas_price_gwei, max_slippage_bps,
+    |                                                       ^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `transaction_submission_retries` in this scope
+   --> bot/src/config.rs:239:9
+    |
+239 |         transaction_submission_retries, gas_estimation_multiplier, optimal_loan_search_iterations,
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `gas_estimation_multiplier` in this scope
+   --> bot/src/config.rs:239:41
+    |
+239 |         transaction_submission_retries, gas_estimation_multiplier, optimal_loan_search_iterations,
+    |                                         ^^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `EthersU64` in this scope
+  --> bot/src/event_handler.rs:35:45
+   |
+35 | pub async fn handle_new_block(block_number: EthersU64, _state: Arc<AppState>) -> Result<()> {
+   |                                             ^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `SignerMiddleware` in this scope
+  --> bot/src/event_handler.rs:45:17
+   |
+45 |     client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>, 
+   |                 ^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `Provider` in this scope
+  --> bot/src/event_handler.rs:45:34
+   |
+45 |     client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>, 
+   |                                  ^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `Http` in this scope
+  --> bot/src/event_handler.rs:45:43
+   |
+45 |     client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>, 
+   |                                           ^^^^ not found in this scope
+
+error[E0425]: cannot find value `app_state` in this scope
+   --> bot/src/event_handler.rs:114:34
+    |
+114 |         if let Some(pool_info) = app_state.known_pools.get(&pool_address) {
+    |                                  ^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `EthersU64` in this scope
+   --> bot/src/event_handler.rs:171:19
+    |
+171 |     block_number: EthersU64, 
+    |                   ^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `SignerMiddleware` in this scope
+   --> bot/src/event_handler.rs:173:22
+    |
+173 |     client_http: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>, 
+    |                      ^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `Provider` in this scope
+   --> bot/src/event_handler.rs:173:39
+    |
+173 |     client_http: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>, 
+    |                                       ^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `Http` in this scope
+   --> bot/src/event_handler.rs:173:48
+    |
+173 |     client_http: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>, 
+    |                                                ^^^^ not found in this scope
+
+error[E0412]: cannot find type `SignerMiddleware` in this scope
+   --> bot/src/event_handler.rs:258:23
+    |
+258 |     _http_client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>, 
+    |                       ^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `Provider` in this scope
+   --> bot/src/event_handler.rs:258:40
+    |
+258 |     _http_client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>, 
+    |                                        ^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `Http` in this scope
+   --> bot/src/event_handler.rs:258:49
+    |
+258 |     _http_client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>, 
+    |                                                 ^^^^ not found in this scope
+
+error[E0433]: failed to resolve: use of undeclared type `QuoterV2`
+  --> bot/src/simulation.rs:77:26
+   |
+77 |             let quoter = QuoterV2::new(quoter_address, client.clone());
+   |                          ^^^^^^^^ use of undeclared type `QuoterV2`
+   |
+help: consider importing this struct through its public re-export
+   |
+5  + use crate::bindings::QuoterV2;
+   |
+
+error[E0433]: failed to resolve: use of undeclared type `BalancerVault`
+   --> bot/src/simulation.rs:209:26
+    |
+209 |     let balancer_vault = BalancerVault::new(config_ref.balancer_vault_address, client.clone()); // Assuming H160
+    |                          ^^^^^^^^^^^^^ use of undeclared type `BalancerVault`
+    |
+help: consider importing this struct through its public re-export
+    |
+5   + use crate::bindings::BalancerVault;
+    |
+
+error[E0425]: cannot find value `loan_amount` in this scope
+   --> bot/src/simulation.rs:505:13
+    |
+505 |             loan_amount,
+    |             ^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `loan_amount` in this scope
+   --> bot/src/simulation.rs:522:13
+    |
+522 |             loan_amount,
+    |             ^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `max_profit_wei` in this scope
+   --> bot/src/simulation.rs:663:25
+    |
+663 |             if profit > max_profit_wei {
+    |                         ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `max_profit_wei` in this scope
+   --> bot/src/simulation.rs:664:17
+    |
+664 |                 max_profit_wei = profit;
+    |                 ^^^^^^^^^^^^^^
+    |
+help: you might have meant to introduce a new binding
+    |
+664 |                 let max_profit_wei = profit;
+    |                 +++
+
+error[E0425]: cannot find value `optimal_loan_wei` in this scope
+   --> bot/src/simulation.rs:665:17
+    |
+665 |                 optimal_loan_wei = test_loan_wei;
+    |                 ^^^^^^^^^^^^^^^^
+    |
+help: a local variable with a similar name exists
+    |
+665 -                 optimal_loan_wei = test_loan_wei;
+665 +                 optimal_loan = test_loan_wei;
+    |
+help: you might have meant to introduce a new binding
+    |
+665 |                 let optimal_loan_wei = test_loan_wei;
+    |                 +++
+
+error[E0425]: cannot find value `optimal_loan_wei` in this scope
+   --> bot/src/simulation.rs:666:59
+    |
+666 |                 trace!(?route.id, new_optimal_loan_wei = %optimal_loan_wei, new_max_profit_wei = %max_profit_wei, "New optimal loan found");
+    |                                                           ^^^^^^^^^^^^^^^^ help: a local variable with a similar name exists: `optimal_loan`
+
+error[E0425]: cannot find value `max_profit_wei` in this scope
+   --> bot/src/simulation.rs:666:99
+    |
+666 |                 trace!(?route.id, new_optimal_loan_wei = %optimal_loan_wei, new_max_profit_wei = %max_profit_wei, "New optimal loan found");
+    |                                                                                                   ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `optimal_loan_wei` in this scope
+   --> bot/src/simulation.rs:685:9
+    |
+685 |     Ok((optimal_loan_wei, max_profit_wei))
+    |         ^^^^^^^^^^^^^^^^ help: a local variable with a similar name exists: `optimal_loan`
+
+error[E0425]: cannot find value `max_profit_wei` in this scope
+   --> bot/src/simulation.rs:685:27
+    |
+685 |     Ok((optimal_loan_wei, max_profit_wei))
+    |                           ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0433]: failed to resolve: use of undeclared type `QuoterV2`
+   --> bot/src/simulation.rs:737:26
+    |
+737 |             let quoter = QuoterV2::new(quoter_address, client.clone());
+    |                          ^^^^^^^^ use of undeclared type `QuoterV2`
+    |
+help: consider importing this struct through its public re-export
+    |
+5   + use crate::bindings::QuoterV2;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `BalancerVault`
+   --> bot/src/simulation.rs:869:26
+    |
+869 |     let balancer_vault = BalancerVault::new(config_ref.balancer_vault_address, client.clone()); // Assuming H160
+    |                          ^^^^^^^^^^^^^ use of undeclared type `BalancerVault`
+    |
+help: consider importing this struct through its public re-export
+    |
+5   + use crate::bindings::BalancerVault;
+    |
+
+error[E0425]: cannot find value `loan_amount` in this scope
+    --> bot/src/simulation.rs:1165:13
+     |
+1165 |             loan_amount,
+     |             ^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `loan_amount` in this scope
+    --> bot/src/simulation.rs:1182:13
+     |
+1182 |             loan_amount,
+     |             ^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `max_profit_wei` in this scope
+    --> bot/src/simulation.rs:1323:25
+     |
+1323 |             if profit > max_profit_wei {
+     |                         ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `max_profit_wei` in this scope
+    --> bot/src/simulation.rs:1324:17
+     |
+1324 |                 max_profit_wei = profit;
+     |                 ^^^^^^^^^^^^^^
+     |
+help: you might have meant to introduce a new binding
+     |
+1324 |                 let max_profit_wei = profit;
+     |                 +++
+
+error[E0425]: cannot find value `optimal_loan_wei` in this scope
+    --> bot/src/simulation.rs:1325:17
+     |
+1325 |                 optimal_loan_wei = test_loan_wei;
+     |                 ^^^^^^^^^^^^^^^^
+     |
+help: a local variable with a similar name exists
+     |
+1325 -                 optimal_loan_wei = test_loan_wei;
+1325 +                 optimal_loan = test_loan_wei;
+     |
+help: you might have meant to introduce a new binding
+     |
+1325 |                 let optimal_loan_wei = test_loan_wei;
+     |                 +++
+
+error[E0425]: cannot find value `optimal_loan_wei` in this scope
+    --> bot/src/simulation.rs:1326:59
+     |
+1326 |                 trace!(?route.id, new_optimal_loan_wei = %optimal_loan_wei, new_max_profit_wei = %max_profit_wei, "New optimal loan found");
+     |                                                           ^^^^^^^^^^^^^^^^ help: a local variable with a similar name exists: `optimal_loan`
+
+error[E0425]: cannot find value `max_profit_wei` in this scope
+    --> bot/src/simulation.rs:1326:99
+     |
+1326 |                 trace!(?route.id, new_optimal_loan_wei = %optimal_loan_wei, new_max_profit_wei = %max_profit_wei, "New optimal loan found");
+     |                                                                                                   ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `optimal_loan_wei` in this scope
+    --> bot/src/simulation.rs:1345:9
+     |
+1345 |     Ok((optimal_loan_wei, max_profit_wei))
+     |         ^^^^^^^^^^^^^^^^ help: a local variable with a similar name exists: `optimal_loan`
+
+error[E0425]: cannot find value `max_profit_wei` in this scope
+    --> bot/src/simulation.rs:1345:27
+     |
+1345 |     Ok((optimal_loan_wei, max_profit_wei))
+     |                           ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `LocalWallet` in this scope
+  --> bot/src/state.rs:88:52
+   |
+88 |     pub client: Arc<SignerMiddleware<Provider<Ws>, LocalWallet>>,
+   |                                                    ^^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `DashMap` in this scope
+  --> bot/src/state.rs:90:26
+   |
+90 |     pub pool_states: Arc<DashMap<Address, PoolState>>,
+   |                          ^^^^^^^ not found in this scope
+   |
+help: consider importing this struct
+   |
+4  + use dashmap::DashMap;
+   |
+
+error[E0412]: cannot find type `DashMap` in this scope
+  --> bot/src/state.rs:91:29
+   |
+91 |     pub pool_snapshots: Arc<DashMap<Address, PoolSnapshot>>,
+   |                             ^^^^^^^ not found in this scope
+   |
+help: consider importing this struct
+   |
+4  + use dashmap::DashMap;
+   |
+
+error[E0412]: cannot find type `LocalWallet` in this scope
+   --> bot/src/state.rs:122:52
+    |
+122 |         client: Arc<SignerMiddleware<Provider<Ws>, LocalWallet>>,
+    |                                                    ^^^^^^^^^^^ not found in this scope
+
+error[E0433]: failed to resolve: use of undeclared type `DashMap`
+   --> bot/src/state.rs:127:36
+    |
+127 |         let pool_states = Arc::new(DashMap::<Address, PoolState>::new());
+    |                                    ^^^^^^^ use of undeclared type `DashMap`
+    |
+help: consider importing this struct
+    |
+4   + use dashmap::DashMap;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `DashMap`
+   --> bot/src/state.rs:128:39
+    |
+128 |         let pool_snapshots = Arc::new(DashMap::<Address, PoolSnapshot>::new());
+    |                                       ^^^^^^^ use of undeclared type `DashMap`
+    |
+help: consider importing this struct
+    |
+4   + use dashmap::DashMap;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `LocalWallet`
+   --> bot/src/state.rs:158:22
+    |
+158 |         let wallet = LocalWallet::new(&mut rand::thread_rng())
+    |                      ^^^^^^^^^^^ use of undeclared type `LocalWallet`
+
+error[E0433]: failed to resolve: use of undeclared type `DashMap`
+   --> bot/src/state.rs:190:35
+    |
+190 |             pool_states: Arc::new(DashMap::new()),
+    |                                   ^^^^^^^ use of undeclared type `DashMap`
+    |
+help: consider importing this struct
+    |
+4   + use dashmap::DashMap;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `DashMap`
+   --> bot/src/state.rs:191:38
+    |
+191 |             pool_snapshots: Arc::new(DashMap::new()),
+    |                                      ^^^^^^^ use of undeclared type `DashMap`
+    |
+help: consider importing this struct
+    |
+4   + use dashmap::DashMap;
+    |
+
+error[E0412]: cannot find type `LocalWallet` in this scope
+   --> bot/src/state.rs:207:54
+    |
+207 |     rpc_client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
+    |                                                      ^^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `LocalWallet` in this scope
+   --> bot/src/state.rs:389:50
+    |
+389 |     client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>, 
+    |                                                  ^^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `Mutex` in this scope
+  --> bot/src/transaction.rs:45:20
+   |
+45 |     current_nonce: Mutex<Option<U256>>, // Use tokio::sync::Mutex
+   |                    ^^^^^ not found in this scope
+   |
+help: consider importing one of these structs
+   |
+3  + use std::sync::Mutex;
+   |
+3  + use futures_util::lock::Mutex;
+   |
+3  + use tokio::sync::Mutex;
+   |
+
+error[E0433]: failed to resolve: use of undeclared type `Mutex`
+  --> bot/src/transaction.rs:52:28
+   |
+52 |             current_nonce: Mutex::new(None),
+   |                            ^^^^^ use of undeclared type `Mutex`
+   |
+help: consider importing one of these structs
+   |
+3  + use std::sync::Mutex;
+   |
+3  + use futures_util::lock::Mutex;
+   |
+3  + use tokio::sync::Mutex;
+   |
+
+error[E0412]: cannot find type `RouteCandidate` in this scope
+   --> bot/src/transaction.rs:148:13
+    |
+148 |     route: &RouteCandidate,
+    |             ^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct
+    |
+3   + use crate::path_optimizer::RouteCandidate;
+    |
+
+error[E0412]: cannot find type `AppState` in this scope
+   --> bot/src/transaction.rs:151:20
+    |
+151 |     app_state: Arc<AppState>,
+    |                    ^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct through its public re-export
+    |
+3   + use crate::AppState;
+    |
+
+error[E0425]: cannot find function `format_units` in this scope
+   --> bot/src/transaction.rs:143:24
+    |
+143 |     loan_amount_eth = %format_units(loan_amount_wei, app_state.config.weth_decimals.unwrap_or(18) as i32).unwrap_or_default(),
+    |                        ^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing one of these functions
+    |
+3   + use crate::utils::format_units;
+    |
+3   + use ethers::utils::format_units;
+    |
+
+error[E0425]: cannot find function `format_units` in this scope
+   --> bot/src/transaction.rs:145:19
+    |
+145 |     profit_eth = %format_units(min_profit_wei, app_state.config.weth_decimals.unwrap_or(18) as i32).unwrap_or_default()
+    |                   ^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing one of these functions
+    |
+3   + use crate::utils::format_units;
+    |
+3   + use ethers::utils::format_units;
+    |
+
+error[E0425]: cannot find function `parse_units` in this scope
+   --> bot/src/transaction.rs:211:29
+    |
+211 |         let gas_price_wei = parse_units(fixed_gas_price_gwei, "gwei")?.into();
+    |                             ^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+    |
+3   + use ethers::utils::parse_units;
+    |
+
+error[E0412]: cannot find type `SignerMiddlewareError` in this scope
+   --> bot/src/transaction.rs:383:17
+    |
+383 | impl<M, S> From<SignerMiddlewareError<M, S>> for ProviderErrorWrapper<<M as Middleware>::Error, <S as Signer>::Error>
+    |                 ^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `SignerMiddleware`
+    |
+   ::: /home/ntjson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ethers-middleware-2.0.14/src/signer.rs:62:1
+    |
+62  | pub struct SignerMiddleware<M, S> {
+    | --------------------------------- similarly named struct `SignerMiddleware` defined here
+
+error[E0412]: cannot find type `SignerMiddlewareError` in this scope
+   --> bot/src/transaction.rs:390:18
+    |
+390 |     fn from(err: SignerMiddlewareError<M, S>) -> Self {
+    |                  ^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `SignerMiddleware`
+    |
+   ::: /home/ntjson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ethers-middleware-2.0.14/src/signer.rs:62:1
+    |
+62  | pub struct SignerMiddleware<M, S> {
+    | --------------------------------- similarly named struct `SignerMiddleware` defined here
+
+error[E0433]: failed to resolve: use of undeclared type `SignerMiddlewareError`
+   --> bot/src/transaction.rs:392:13
+    |
+392 |             SignerMiddlewareError::MiddlewareError(e) => ProviderErrorWrapper::Middleware(e),
+    |             ^^^^^^^^^^^^^^^^^^^^^
+    |             |
+    |             use of undeclared type `SignerMiddlewareError`
+    |             help: a struct with a similar name exists: `SignerMiddleware`
+
+error[E0433]: failed to resolve: use of undeclared type `SignerMiddlewareError`
+   --> bot/src/transaction.rs:393:13
+    |
+393 |             SignerMiddlewareError::SignerError(e) => ProviderErrorWrapper::Signer(e),
+    |             ^^^^^^^^^^^^^^^^^^^^^
+    |             |
+    |             use of undeclared type `SignerMiddlewareError`
+    |             help: a struct with a similar name exists: `SignerMiddleware`
+
+error[E0433]: failed to resolve: use of undeclared type `SignerMiddlewareError`
+   --> bot/src/transaction.rs:396:13
+    |
+396 |             SignerMiddlewareError::NonceMissing => ProviderErrorWrapper::Custom("NonceMissing from SignerMiddlewareError".to_string()),
+    |             ^^^^^^^^^^^^^^^^^^^^^
+    |             |
+    |             use of undeclared type `SignerMiddlewareError`
+    |             help: a struct with a similar name exists: `SignerMiddleware`
+
+error[E0433]: failed to resolve: use of undeclared type `SignerMiddlewareError`
+   --> bot/src/transaction.rs:397:13
+    |
+397 | ...   SignerMiddlewareError::GasPriceMissing => ProviderErrorWrapper::Custom("GasPriceMissing from SignerMiddlewareError".to_string()),
+    |       ^^^^^^^^^^^^^^^^^^^^^
+    |       |
+    |       use of undeclared type `SignerMiddlewareError`
+    |       help: a struct with a similar name exists: `SignerMiddleware`
+
+error[E0433]: failed to resolve: use of undeclared type `SignerMiddlewareError`
+   --> bot/src/transaction.rs:398:13
+    |
+398 |             SignerMiddlewareError::GasMissing => ProviderErrorWrapper::Custom("GasMissing from SignerMiddlewareError".to_string()),
+    |             ^^^^^^^^^^^^^^^^^^^^^
+    |             |
+    |             use of undeclared type `SignerMiddlewareError`
+    |             help: a struct with a similar name exists: `SignerMiddleware`
+
+warning: unused import: `crate::bindings::{
+             // Event filter structs will be in their respective modules, e.g.,
+             // crate::bindings::i_uniswap_v3_factory::IUniswapV3FactoryPoolCreatedFilter,
+             // crate::bindings::uniswap_v3_pool::UniswapV3PoolSwapFilter, (or i_uniswap_v3_pool if Swap is from interface)
+             // crate::bindings::velodrome_v2_pool::VelodromeV2PoolSwapFilter,
+             // crate::bindings::aerodrome_pool::AerodromePoolSwapFilter,
+             // Contract types:
+             // crate::bindings::velodrome_v2_pool::VelodromeV2Pool,
+             // crate::bindings::aerodrome_pool::AerodromePool,
+         }`
+  --> bot/src/event_handler.rs:3:5
+   |
+3  |   use crate::bindings::{
+   |  _____^
+...  |
+12 | | };
+   | |_^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `PoolSnapshot`
+  --> bot/src/event_handler.rs:13:49
+   |
+13 | use crate::state::{AppState, DexType, PoolInfo, PoolSnapshot}; // Removed RouteDetails as unused
+   |                                                 ^^^^^^^^^^^^
+
+warning: unused import: `config::Config`
+  --> bot/src/event_handler.rs:16:5
+   |
+16 |     config::Config,
+   |     ^^^^^^^^^^^^^^
+
+warning: unused imports: `Filter`, `H160`, `H256`, `Middleware`, `U256`, and `U64`
+  --> bot/src/event_handler.rs:23:28
+   |
+23 |     core::types::{Address, Filter, Log, RawLog, H160, H256, U256, U64}, // Added RawLog
+   |                            ^^^^^^               ^^^^  ^^^^  ^^^^  ^^^
+24 |     // contract::{EthLogDecode, ContractCall}, // EthLogDecode might be unneeded if using generated filters
+25 |     providers::{Middleware, StreamExt}, // Removed Provider, Ws as unused directly here
+   |                 ^^^^^^^^^^
+
+warning: unused import: `timeout`
+  --> bot/src/event_handler.rs:30:19
+   |
+30 | use tokio::time::{timeout, Duration};
+   |                   ^^^^^^^
+
+warning: unused imports: `PoolSnapshot` and `bindings::{
+                 // Contract structs will be in their respective modules, e.g.,
+                 // crate::bindings::quoter_v2::QuoterV2,
+                 // crate::bindings::velodrome_router::VelodromeRouter,
+                 // crate::bindings::arbitrage_executor::ArbitrageExecutor,
+                 // crate::bindings::balancer_vault::BalancerVault,
+             }`
+  --> bot/src/simulation.rs:6:5
+   |
+6  | /     bindings::{
+...  |
+12 | |     },
+   | |_____^
+13 |       config::Config,
+14 |       state::{AppState, DexType, PoolInfo, PoolSnapshot, RouteDetails},
+   |                                            ^^^^^^^^^^^^
+
+warning: unused import: `U64`
+  --> bot/src/simulation.rs:18:47
+   |
+18 |     core::types::{Address, Bytes, I256, U256, U64}, // Added Bytes, U64
+   |                                               ^^^
+
+warning: unused import: `error`
+  --> bot/src/simulation.rs:27:22
+   |
+27 | use tracing::{debug, error, info, instrument, trace, warn};
+   |                      ^^^^^
+
+warning: unused imports: `BlockNumber`, `Filter`, `H160`, `H256`, `Log`, `U64`, and `utils::keccak256`
+  --> bot/src/state.rs:10:28
+   |
+10 |     core::types::{Address, BlockNumber, Filter, Log, H160, H256, U256, U64},
+   |                            ^^^^^^^^^^^  ^^^^^^  ^^^  ^^^^  ^^^^        ^^^
+...
+13 |     utils::keccak256,
+   |     ^^^^^^^^^^^^^^^^
+
+warning: unused import: `futures_util::StreamExt`
+  --> bot/src/state.rs:16:5
+   |
+16 | use futures_util::StreamExt;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `debug` and `error`
+  --> bot/src/state.rs:19:15
+   |
+19 | use tracing::{debug, error, info, instrument, warn}; // Added warn
+   |               ^^^^^  ^^^^^
+
+warning: unused imports: `PendingTransaction` and `WalletError`
+  --> bot/src/transaction.rs:13:45
+   |
+13 |     providers::{Http, Middleware, Provider, PendingTransaction, ProviderError as EthersProviderError}, // Alias EthersProviderError
+   |                                             ^^^^^^^^^^^^^^^^^^
+14 |     signers::{LocalWallet, Signer, WalletError}, // Import WalletError
+   |                                    ^^^^^^^^^^^
+
+error[E0124]: field `min_profit_threshold_wei` is already declared
+  --> bot/src/config.rs:91:5
+   |
+47 |     pub min_profit_threshold_wei: Option<U256>,
+   |     ------------------------------------------ `min_profit_threshold_wei` first declared here
+...
+91 |     pub min_profit_threshold_wei: Option<U256>, // Keep one declaration
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `max_gas_price_gwei` is already declared
+  --> bot/src/config.rs:92:5
+   |
+48 |     pub max_gas_price_gwei: Option<f64>,
+   |     ----------------------------------- `max_gas_price_gwei` first declared here
+...
+92 |     pub max_gas_price_gwei: Option<f64>, // Keep one declaration
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `max_slippage_bps` is already declared
+  --> bot/src/config.rs:93:5
+   |
+49 |     pub max_slippage_bps: Option<u16>,
+   |     --------------------------------- `max_slippage_bps` first declared here
+...
+93 |     pub max_slippage_bps: Option<u16>, // Keep one declaration
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `transaction_submission_retries` is already declared
+  --> bot/src/config.rs:95:5
+   |
+52 |     pub transaction_submission_retries: Option<usize>,
+   |     ------------------------------------------------- `transaction_submission_retries` first declared here
+...
+95 |     pub transaction_submission_retries: Option<usize>, // Keep one declaration
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `gas_estimation_multiplier` is already declared
+  --> bot/src/config.rs:96:5
+   |
+53 |     pub gas_estimation_multiplier: Option<f64>,
+   |     ------------------------------------------ `gas_estimation_multiplier` first declared here
+...
+96 |     pub gas_estimation_multiplier: Option<f64>, // Keep one declaration
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `optimal_loan_search_iterations` is already declared
+  --> bot/src/config.rs:97:5
+   |
+56 |     pub optimal_loan_search_iterations: Option<u32>,
+   |     ----------------------------------------------- `optimal_loan_search_iterations` first declared here
+...
+97 |     pub optimal_loan_search_iterations: Option<u32>, // Keep one declaration
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `velodrome_router_address` is already declared
+  --> bot/src/config.rs:99:5
+   |
+26 |     pub velodrome_router_address: Option<Address>,
+   |     --------------------------------------------- `velodrome_router_address` first declared here
+...
+99 |     pub velodrome_router_address: Option<Address>, // Keep one declaration
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `uniswap_v3_factory_address` is already declared
+   --> bot/src/config.rs:101:5
+    |
+30  |     pub uniswap_v3_factory_address: Option<Address>,
+    |     ----------------------------------------------- `uniswap_v3_factory_address` first declared here
+...
+101 |     pub uniswap_v3_factory_address: Option<Address>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `uniswap_v3_quoter_v2_address` is already declared
+   --> bot/src/config.rs:102:5
+    |
+31  |     pub uniswap_v3_quoter_v2_address: Option<Address>,
+    |     ------------------------------------------------- `uniswap_v3_quoter_v2_address` first declared here
+...
+102 |     pub uniswap_v3_quoter_v2_address: Option<Address>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `uniswap_v3_router_address` is already declared
+   --> bot/src/config.rs:103:5
+    |
+32  |     pub uniswap_v3_router_address: Option<Address>,
+    |     ---------------------------------------------- `uniswap_v3_router_address` first declared here
+...
+103 |     pub uniswap_v3_router_address: Option<Address>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `initial_block_history_to_scan` is already declared
+   --> bot/src/config.rs:105:5
+    |
+35  |     pub initial_block_history_to_scan: Option<u64>,
+    |     ---------------------------------------------- `initial_block_history_to_scan` first declared here
+...
+105 |     pub initial_block_history_to_scan: Option<u64>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `max_block_range_per_query` is already declared
+   --> bot/src/config.rs:106:5
+    |
+36  |     pub max_block_range_per_query: Option<u64>,
+    |     ------------------------------------------ `max_block_range_per_query` first declared here
+...
+106 |     pub max_block_range_per_query: Option<u64>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `log_level` is already declared
+   --> bot/src/config.rs:107:5
+    |
+37  |     pub log_level: Option<String>,
+    |     ----------------------------- `log_level` first declared here
+...
+107 |     pub log_level: Option<String>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `use_local_anvil_node` is already declared
+   --> bot/src/config.rs:108:5
+    |
+38  |     pub use_local_anvil_node: Option<bool>,
+    |     -------------------------------------- `use_local_anvil_node` first declared here
+...
+108 |     pub use_local_anvil_node: Option<bool>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `local_anvil_port` is already declared
+   --> bot/src/config.rs:109:5
+    |
+39  |     pub local_anvil_port: Option<u16>,
+    |     --------------------------------- `local_anvil_port` first declared here
+...
+109 |     pub local_anvil_port: Option<u16>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `local_anvil_chain_id` is already declared
+   --> bot/src/config.rs:110:5
+    |
+40  |     pub local_anvil_chain_id: Option<u64>,
+    |     ------------------------------------- `local_anvil_chain_id` first declared here
+...
+110 |     pub local_anvil_chain_id: Option<u64>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `local_anvil_gas_limit` is already declared
+   --> bot/src/config.rs:111:5
+    |
+41  |     pub local_anvil_gas_limit: Option<u64>,
+    |     -------------------------------------- `local_anvil_gas_limit` first declared here
+...
+111 |     pub local_anvil_gas_limit: Option<u64>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `local_anvil_block_time` is already declared
+   --> bot/src/config.rs:112:5
+    |
+42  |     pub local_anvil_block_time: Option<u64>,
+    |     --------------------------------------- `local_anvil_block_time` first declared here
+...
+112 |     pub local_anvil_block_time: Option<u64>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `local_anvil_fork_url` is already declared
+   --> bot/src/config.rs:113:5
+    |
+43  |     pub local_anvil_fork_url: Option<String>,
+    |     ---------------------------------------- `local_anvil_fork_url` first declared here
+...
+113 |     pub local_anvil_fork_url: Option<String>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `local_anvil_fork_block_number` is already declared
+   --> bot/src/config.rs:114:5
+    |
+44  |     pub local_anvil_fork_block_number: Option<u64>,
+    |     ---------------------------------------------- `local_anvil_fork_block_number` first declared here
+...
+114 |     pub local_anvil_fork_block_number: Option<u64>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0308]: `?` operator has incompatible types
+   --> bot/src/simulation.rs:186:31
+    |
+186 |       let gas_price_wei: U256 = parse_units(&gas_price_wei_str, "gwei")
+    |  _______________________________^
+187 | |         .map_err(|e: ConversionError| eyre!("Failed to parse gas_price_gwei_override: {}", e))?;
+    | |_______________________________________________________________________________________________^ expected `U256`, found `ParseUnits`
+    |
+    = note: `?` operator cannot convert from `ParseUnits` to `ethers::types::U256`
+note: return type inferred to be `ethers::types::U256` here
+   --> bot/src/simulation.rs:141:6
+    |
+141 | ) -> Result<I256> {
+    |      ^^^^^^
+help: call `Into::into` on this expression to convert `ParseUnits` into `ethers::types::U256`
+    |
+187 |         .map_err(|e: ConversionError| eyre!("Failed to parse gas_price_gwei_override: {}", e))?.into();
+    |                                                                                                +++++++
+
+error[E0599]: no method named `execute_flash_arbitrage_balancer` found for struct `ArbitrageExecutor<SignerMiddleware<Provider<Http>, Wallet<...>>>` in the current scope
+   --> bot/src/simulation.rs:498:27
+    |
+498 |           executor_contract.execute_flash_arbitrage_balancer( 
+    |           ------------------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method not found in `ArbitrageExecutor<SignerMiddleware<Provider<Http>, Wallet<...>>>`
+    |
+   ::: bot/src/bindings.rs:57:1
+    |
+57  | / abigen!(
+58  | |     ArbitrageExecutor,
+59  | |     "./abis/ArbitrageExecutor.json", 
+60  | |     event_derives(serde::Deserialize, serde::Serialize)
+61  | | );
+    | |_- method `execute_flash_arbitrage_balancer` not found for this struct
+
+error[E0599]: no method named `execute_flash_arbitrage` found for struct `ArbitrageExecutor<SignerMiddleware<Provider<Http>, Wallet<...>>>` in the current scope
+   --> bot/src/simulation.rs:515:27
+    |
+515 |           executor_contract.execute_flash_arbitrage(
+    |           ------------------^^^^^^^^^^^^^^^^^^^^^^^ method not found in `ArbitrageExecutor<SignerMiddleware<Provider<Http>, Wallet<...>>>`
+    |
+   ::: bot/src/bindings.rs:57:1
+    |
+57  | / abigen!(
+58  | |     ArbitrageExecutor,
+59  | |     "./abis/ArbitrageExecutor.json", 
+60  | |     event_derives(serde::Deserialize, serde::Serialize)
+61  | | );
+    | |_- method `execute_flash_arbitrage` not found for this struct
+
+error[E0308]: mismatched types
+   --> bot/src/simulation.rs:554:8
+    |
+553 |     let gas_cost = final_gas_limit_u256 * gas_price_wei; 
+    |                    ------------------------------------ here the type of `gas_cost` is inferred to be `ethers::types::U256`
+554 |     Ok(gas_cost)
+    |     -- ^^^^^^^^ expected `I256`, found `U256`
+    |     |
+    |     arguments to this enum variant are incorrect
+    |
+help: the type constructed contains `ethers::types::U256` due to the type of the argument passed
+   --> bot/src/simulation.rs:554:5
+    |
+554 |     Ok(gas_cost)
+    |     ^^^--------^
+    |        |
+    |        this argument influences the type of `Ok`
+note: tuple variant defined here
+   --> /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb/library/core/src/result.rs:532:5
+
+error[E0061]: this function takes 5 arguments but 6 arguments were supplied
+   --> bot/src/simulation.rs:612:24
+    |
+612 |     let gas_cost_wei = calculate_gas_cost_for_flash_loan(
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+618 |         executor_address
+    |         ---------------- unexpected argument #6 of type `H160`
+    |
+note: expected `Option<f64>`, found `H160`
+   --> bot/src/simulation.rs:617:9
+    |
+617 |         wallet_address, 
+    |         ^^^^^^^^^^^^^^
+    = note: expected enum `std::option::Option<f64>`
+             found struct `H160`
+note: function defined here
+   --> bot/src/simulation.rs:475:10
+    |
+475 | async fn calculate_gas_cost_for_flash_loan(
+    |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+480 |     gas_price_gwei_override: Option<f64>,
+    |     ------------------------------------
+help: remove the extra argument
+    |
+617 -         wallet_address, 
+617 +         /* std::option::Option<f64> */
+    |
+
+error[E0615]: attempted to take value of method `id` on type `&RouteCandidate`
+   --> bot/src/simulation.rs:662:27
+    |
+662 |             trace!(?route.id, loan_amount_wei = %test_loan_wei, profit_wei = %profit, "Simulated profit for loan amount");
+    |                           ^^ method, not a field
+    |
+help: use parentheses to call the method
+   --> /home/ntjson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.41/src/macros.rs:2828:87
+    |
+2828|             @ { $($out),*, (&$next, $crate::__macro_support::Option::Some(&debug(&$($k()).+) as &dyn Value)) },
+    |                                                                                       ++
+
+error[E0615]: attempted to take value of method `id` on type `&RouteCandidate`
+   --> bot/src/simulation.rs:666:31
+    |
+666 |                 trace!(?route.id, new_optimal_loan_wei = %optimal_loan_wei, new_max_profit_wei = %max_profit_wei, "New optimal loan found");
+    |                               ^^ method, not a field
+    |
+help: use parentheses to call the method
+   --> /home/ntjson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.41/src/macros.rs:2828:87
+    |
+2828|             @ { $($out),*, (&$next, $crate::__macro_support::Option::Some(&debug(&$($k()).+) as &dyn Value)) },
+    |                                                                                       ++
+
+error[E0615]: attempted to take value of method `id` on type `&RouteCandidate`
+   --> bot/src/simulation.rs:670:26
+    |
+670 |             warn!(?route.id, loan_amount_wei = %test_loan_wei, "Simulation error during optimal loan search: {:?}", e);
+    |                          ^^ method, not a field
+    |
+help: use parentheses to call the method
+   --> /home/ntjson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.41/src/macros.rs:2828:87
+    |
+2828|             @ { $($out),*, (&$next, $crate::__macro_support::Option::Some(&debug(&$($k()).+) as &dyn Value)) },
+    |                                                                                       ++
+
+error[E0308]: `?` operator has incompatible types
+   --> bot/src/simulation.rs:846:31
+    |
+846 |       let gas_price_wei: U256 = parse_units(&gas_price_wei_str, "gwei")
+    |  _______________________________^
+847 | |         .map_err(|e: ConversionError| eyre!("Failed to parse gas_price_gwei_override: {}", e))?;
+    | |_______________________________________________________________________________________________^ expected `U256`, found `ParseUnits`
+    |
+    = note: `?` operator cannot convert from `ParseUnits` to `ethers::types::U256`
+note: return type inferred to be `ethers::types::U256` here
+   --> bot/src/simulation.rs:801:6
+    |
+801 | ) -> Result<I256> {
+    |      ^^^^^^
+help: call `Into::into` on this expression to convert `ParseUnits` into `ethers::types::U256`
+    |
+847 |         .map_err(|e: ConversionError| eyre!("Failed to parse gas_price_gwei_override: {}", e))?.into();
+    |                                                                                                +++++++
+
+error[E0599]: no method named `execute_flash_arbitrage_balancer` found for struct `ArbitrageExecutor<SignerMiddleware<Provider<Http>, Wallet<...>>>` in the current scope
+    --> bot/src/simulation.rs:1158:27
+     |
+1158 |           executor_contract.execute_flash_arbitrage_balancer( 
+     |           ------------------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method not found in `ArbitrageExecutor<SignerMiddleware<Provider<Http>, Wallet<...>>>`
+     |
+    ::: bot/src/bindings.rs:57:1
+     |
+57   | / abigen!(
+58   | |     ArbitrageExecutor,
+59   | |     "./abis/ArbitrageExecutor.json", 
+60   | |     event_derives(serde::Deserialize, serde::Serialize)
+61   | | );
+     | |_- method `execute_flash_arbitrage_balancer` not found for this struct
+
+error[E0599]: no method named `execute_flash_arbitrage` found for struct `ArbitrageExecutor<SignerMiddleware<Provider<Http>, Wallet<...>>>` in the current scope
+    --> bot/src/simulation.rs:1175:27
+     |
+1175 |           executor_contract.execute_flash_arbitrage(
+     |           ------------------^^^^^^^^^^^^^^^^^^^^^^^ method not found in `ArbitrageExecutor<SignerMiddleware<Provider<Http>, Wallet<...>>>`
+     |
+    ::: bot/src/bindings.rs:57:1
+     |
+57   | / abigen!(
+58   | |     ArbitrageExecutor,
+59   | |     "./abis/ArbitrageExecutor.json", 
+60   | |     event_derives(serde::Deserialize, serde::Serialize)
+61   | | );
+     | |_- method `execute_flash_arbitrage` not found for this struct
+
+error[E0308]: mismatched types
+    --> bot/src/simulation.rs:1214:8
+     |
+1213 |     let gas_cost = final_gas_limit_u256 * gas_price_wei; 
+     |                    ------------------------------------ here the type of `gas_cost` is inferred to be `ethers::types::U256`
+1214 |     Ok(gas_cost)
+     |     -- ^^^^^^^^ expected `I256`, found `U256`
+     |     |
+     |     arguments to this enum variant are incorrect
+     |
+help: the type constructed contains `ethers::types::U256` due to the type of the argument passed
+    --> bot/src/simulation.rs:1214:5
+     |
+1214 |     Ok(gas_cost)
+     |     ^^^--------^
+     |        |
+     |        this argument influences the type of `Ok`
+note: tuple variant defined here
+    --> /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb/library/core/src/result.rs:532:5
+
+error[E0061]: this function takes 5 arguments but 6 arguments were supplied
+    --> bot/src/simulation.rs:1272:24
+     |
+1272 |     let gas_cost_wei = calculate_gas_cost_for_flash_loan(
+     |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1278 |         executor_address
+     |         ---------------- unexpected argument #6 of type `H160`
+     |
+note: expected `Option<f64>`, found `H160`
+    --> bot/src/simulation.rs:1277:9
+     |
+1277 |         wallet_address, 
+     |         ^^^^^^^^^^^^^^
+     = note: expected enum `std::option::Option<f64>`
+              found struct `H160`
+note: function defined here
+    --> bot/src/simulation.rs:475:10
+     |
+475  | async fn calculate_gas_cost_for_flash_loan(
+     |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+480  |     gas_price_gwei_override: Option<f64>,
+     |     ------------------------------------
+help: remove the extra argument
+     |
+1277 -         wallet_address, 
+1277 +         /* std::option::Option<f64> */
+     |
+
+error[E0615]: attempted to take value of method `id` on type `&RouteCandidate`
+    --> bot/src/simulation.rs:1322:27
+     |
+1322 |             trace!(?route.id, loan_amount_wei = %test_loan_wei, profit_wei = %profit, "Simulated profit for loan amount");
+     |                           ^^ method, not a field
+     |
+help: use parentheses to call the method
+    -->  /home/ntjson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.41/src/macros.rs:2828:87
+     |
+2828 |             @ { $($out),*, (&$next, $crate::__macro_support::Option::Some(&debug(&$($k()).+) as &dyn Value)) },
+     |                                                                                       ++
+
+error[E0615]: attempted to take value of method `id` on type `&RouteCandidate`
+    --> bot/src/simulation.rs:1326:31
+     |
+1326 |                 trace!(?route.id, new_optimal_loan_wei = %optimal_loan_wei, new_max_profit_wei = %max_profit_wei, "New optimal loan found");
+     |                               ^^ method, not a field
+     |
+help: use parentheses to call the method
+    -->  /home/ntjson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.41/src/macros.rs:2828:87
+     |
+2828 |             @ { $($out),*, (&$next, $crate::__macro_support::Option::Some(&debug(&$($k()).+) as &dyn Value)) },
+     |                                                                                       ++
+
+error[E0615]: attempted to take value of method `id` on type `&RouteCandidate`
+    --> bot/src/simulation.rs:1330:26
+     |
+1330 |             warn!(?route.id, loan_amount_wei = %test_loan_wei, "Simulation error during optimal loan search: {:?}", e);
+     |                          ^^ method, not a field
+     |
+help: use parentheses to call the method
+    -->  /home/ntjson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.41/src/macros.rs:2828:87
+     |
+2828 |             @ { $($out),*, (&$next, $crate::__macro_support::Option::Some(&debug(&$($k()).+) as &dyn Value)) },
+     |                                                                                       ++
+
+error[E0282]: type annotations needed
+   --> bot/src/state.rs:229:17
+    |
+229 |                 tokio::try_join!(token0_call, token1_call, fee_call, slot0_call)
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+    |
+    = note: this error originates in the macro `$crate::try_join` which comes from the expansion of the macro `tokio::try_join` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0433]: failed to resolve: use of undeclared type `VelodromeV2Pool`
+   --> bot/src/state.rs:284:25
+    |
+284 | ...   VelodromeV2Pool::new(pool_addr, client_clone_for_call.clone()).get_reserves().call().await.map_err(|e: ethers::contract::ContractEr...
+    |       ^^^^^^^^^^^^^^^ use of undeclared type `VelodromeV2Pool`
+
+error[E0433]: failed to resolve: use of undeclared type `AerodromePool`
+   --> bot/src/state.rs:286:25
+    |
+286 | ...   AerodromePool::new(pool_addr, client_clone_for_call.clone()).get_reserves().call().await.map_err(|e: ethers::contract::ContractErro...
+    |       ^^^^^^^^^^^^^ use of undeclared type `AerodromePool`
+
+error[E0433]: failed to resolve: use of undeclared type `VelodromeV2Pool`
+   --> bot/src/state.rs:291:25
+    |
+291 | ...   VelodromeV2Pool::new(pool_addr, client_clone_for_call.clone()).token_0().call().await.map_err(|e: ethers::contract::ContractError<_...
+    |       ^^^^^^^^^^^^^^^ use of undeclared type `VelodromeV2Pool`
+
+error[E0433]: failed to resolve: use of undeclared type `AerodromePool`
+   --> bot/src/state.rs:293:25
+    |
+293 | ...   AerodromePool::new(pool_addr, client_clone_for_call.clone()).token_0().call().await.map_err(|e: ethers::contract::ContractError<_>|...
+    |       ^^^^^^^^^^^^^ use of undeclared type `AerodromePool`
+
+error[E0433]: failed to resolve: use of undeclared type `VelodromeV2Pool`
+   --> bot/src/state.rs:296:25
+    |
+296 | ...   VelodromeV2Pool::new(pool_addr, client_clone_for_call.clone()).token_1().call().await.map_err(|e: ethers::contract::ContractError<_...
+    |       ^^^^^^^^^^^^^^^ use of undeclared type `VelodromeV2Pool`
+
+error[E0433]: failed to resolve: use of undeclared type `AerodromePool`
+   --> bot/src/state.rs:298:25
+    |
+298 | ...   AerodromePool::new(pool_addr, client_clone_for_call.clone()).token_1().call().await.map_err(|e: ethers::contract::ContractError<_>|...
+    |       ^^^^^^^^^^^^^ use of undeclared type `AerodromePool`
+
+error[E0433]: failed to resolve: use of undeclared type `VelodromeV2Pool`
+   --> bot/src/state.rs:301:25
+    |
+301 | ...   VelodromeV2Pool::new(pool_addr, client_clone_for_call.clone()).stable().call().await.map_err(|e: ethers::contract::ContractError<_>...
+    |       ^^^^^^^^^^^^^^^ use of undeclared type `VelodromeV2Pool`
+
+error[E0433]: failed to resolve: use of undeclared type `AerodromePool`
+   --> bot/src/state.rs:303:25
+    |
+303 | ...   AerodromePool::new(pool_addr, client_clone_for_call.clone()).stable().call().await.map_err(|e: ethers::contract::ContractError<_>| ...
+    |       ^^^^^^^^^^^^^ use of undeclared type `AerodromePool`
+
+error[E0308]: mismatched types
+   --> bot/src/state.rs:410:122
+    |
+410 |                 if let Ok(res) = pool_contract.get_reserves().call().await { Some((res.0.into(), res.1.into())) } else { None };
+    |                                                                                                                          ^^^^ expected `(Option<(U256, U256)>, Option<bool>)`, found `Option<_>`
+    |
+    = note: expected tuple `(std::option::Option<(ethers::types::U256, ethers::types::U256)>, std::option::Option<bool>)`
+                found enum `std::option::Option<_>`
+
+error[E0599]: no method named `execute_flash_arbitrage_balancer` found for struct `ArbitrageExecutor<_>` in the current scope
+   --> bot/src/transaction.rs:177:27
+    |
+177 |           executor_contract.execute_flash_arbitrage_balancer( // Args must match ABI
+    |           ------------------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method not found in `ArbitrageExecutor<_>`
+    |
+   ::: bot/src/bindings.rs:57:1
+    |
+57  | / abigen!(
+58  | |     ArbitrageExecutor,
+59  | |     "./abis/ArbitrageExecutor.json", 
+60  | |     event_derives(serde::Deserialize, serde::Serialize)
+61  | | );
+    | |_- method `execute_flash_arbitrage_balancer` not found for this struct
+
+error[E0599]: no method named `execute_flash_arbitrage` found for struct `ArbitrageExecutor<_>` in the current scope
+   --> bot/src/transaction.rs:184:27
+    |
+184 |           executor_contract.execute_flash_arbitrage(
+    |           ------------------^^^^^^^^^^^^^^^^^^^^^^^ method not found in `ArbitrageExecutor<_>`
+    |
+   ::: bot/src/bindings.rs:57:1
+    |
+57  | / abigen!(
+58  | |     ArbitrageExecutor,
+59  | |     "./abis/ArbitrageExecutor.json", 
+60  | |     event_derives(serde::Deserialize, serde::Serialize)
+61  | | );
+    | |_- method `execute_flash_arbitrage` not found for this struct
+
+error[E0062]: field `min_profit_threshold_wei` specified more than once
+  --> bot/src/config.rs:91:5
+   |
+47 |     pub min_profit_threshold_wei: Option<U256>,
+   |     ------------------------------------------ first use of `min_profit_threshold_wei`
+...
+91 |     pub min_profit_threshold_wei: Option<U256>, // Keep one declaration
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `max_gas_price_gwei` specified more than once
+  --> bot/src/config.rs:92:5
+   |
+48 |     pub max_gas_price_gwei: Option<f64>,
+   |     ----------------------------------- first use of `max_gas_price_gwei`
+...
+92 |     pub max_gas_price_gwei: Option<f64>, // Keep one declaration
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `max_slippage_bps` specified more than once
+  --> bot/src/config.rs:93:5
+   |
+49 |     pub max_slippage_bps: Option<u16>,
+   |     --------------------------------- first use of `max_slippage_bps`
+...
+93 |     pub max_slippage_bps: Option<u16>, // Keep one declaration
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `transaction_submission_retries` specified more than once
+  --> bot/src/config.rs:95:5
+   |
+52 |     pub transaction_submission_retries: Option<usize>,
+   |     ------------------------------------------------- first use of `transaction_submission_retries`
+...
+95 |     pub transaction_submission_retries: Option<usize>, // Keep one declaration
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `gas_estimation_multiplier` specified more than once
+  --> bot/src/config.rs:96:5
+   |
+53 |     pub gas_estimation_multiplier: Option<f64>,
+   |     ------------------------------------------ first use of `gas_estimation_multiplier`
+...
+96 |     pub gas_estimation_multiplier: Option<f64>, // Keep one declaration
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `optimal_loan_search_iterations` specified more than once
+  --> bot/src/config.rs:97:5
+   |
+56 |     pub optimal_loan_search_iterations: Option<u32>,
+   |     ----------------------------------------------- first use of `optimal_loan_search_iterations`
+...
+97 |     pub optimal_loan_search_iterations: Option<u32>, // Keep one declaration
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `velodrome_router_address` specified more than once
+  --> bot/src/config.rs:99:5
+   |
+26 |     pub velodrome_router_address: Option<Address>,
+   |     --------------------------------------------- first use of `velodrome_router_address`
+...
+99 |     pub velodrome_router_address: Option<Address>, // Keep one declaration
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `uniswap_v3_factory_address` specified more than once
+   --> bot/src/config.rs:101:5
+    |
+30  |     pub uniswap_v3_factory_address: Option<Address>,
+    |     ----------------------------------------------- first use of `uniswap_v3_factory_address`
+...
+101 |     pub uniswap_v3_factory_address: Option<Address>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `uniswap_v3_quoter_v2_address` specified more than once
+   --> bot/src/config.rs:102:5
+    |
+31  |     pub uniswap_v3_quoter_v2_address: Option<Address>,
+    |     ------------------------------------------------- first use of `uniswap_v3_quoter_v2_address`
+...
+102 |     pub uniswap_v3_quoter_v2_address: Option<Address>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `uniswap_v3_router_address` specified more than once
+   --> bot/src/config.rs:103:5
+    |
+32  |     pub uniswap_v3_router_address: Option<Address>,
+    |     ---------------------------------------------- first use of `uniswap_v3_router_address`
+...
+103 |     pub uniswap_v3_router_address: Option<Address>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `initial_block_history_to_scan` specified more than once
+   --> bot/src/config.rs:105:5
+    |
+35  |     pub initial_block_history_to_scan: Option<u64>,
+    |     ---------------------------------------------- first use of `initial_block_history_to_scan`
+...
+105 |     pub initial_block_history_to_scan: Option<u64>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `max_block_range_per_query` specified more than once
+   --> bot/src/config.rs:106:5
+    |
+36  |     pub max_block_range_per_query: Option<u64>,
+    |     ------------------------------------------ first use of `max_block_range_per_query`
+...
+106 |     pub max_block_range_per_query: Option<u64>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `log_level` specified more than once
+   --> bot/src/config.rs:107:5
+    |
+37  |     pub log_level: Option<String>,
+    |     ----------------------------- first use of `log_level`
+...
+107 |     pub log_level: Option<String>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `use_local_anvil_node` specified more than once
+   --> bot/src/config.rs:108:5
+    |
+38  |     pub use_local_anvil_node: Option<bool>,
+    |     -------------------------------------- first use of `use_local_anvil_node`
+...
+108 |     pub use_local_anvil_node: Option<bool>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `local_anvil_port` specified more than once
+   --> bot/src/config.rs:109:5
+    |
+39  |     pub local_anvil_port: Option<u16>,
+    |     --------------------------------- first use of `local_anvil_port`
+...
+109 |     pub local_anvil_port: Option<u16>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `local_anvil_chain_id` specified more than once
+   --> bot/src/config.rs:110:5
+    |
+40  |     pub local_anvil_chain_id: Option<u64>,
+    |     ------------------------------------- first use of `local_anvil_chain_id`
+...
+110 |     pub local_anvil_chain_id: Option<u64>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `local_anvil_gas_limit` specified more than once
+   --> bot/src/config.rs:111:5
+    |
+41  |     pub local_anvil_gas_limit: Option<u64>,
+    |     -------------------------------------- first use of `local_anvil_gas_limit`
+...
+111 |     pub local_anvil_gas_limit: Option<u64>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `local_anvil_block_time` specified more than once
+   --> bot/src/config.rs:112:5
+    |
+42  |     pub local_anvil_block_time: Option<u64>,
+    |     --------------------------------------- first use of `local_anvil_block_time`
+...
+112 |     pub local_anvil_block_time: Option<u64>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `local_anvil_fork_url` specified more than once
+   --> bot/src/config.rs:113:5
+    |
+43  |     pub local_anvil_fork_url: Option<String>,
+    |     ---------------------------------------- first use of `local_anvil_fork_url`
+...
+113 |     pub local_anvil_fork_url: Option<String>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `local_anvil_fork_block_number` specified more than once
+   --> bot/src/config.rs:114:5
+    |
+44  |     pub local_anvil_fork_block_number: Option<u64>,
+    |     ---------------------------------------------- first use of `local_anvil_fork_block_number`
+...
+114 |     pub local_anvil_fork_block_number: Option<u64>, // Keep one declaration
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `min_profit_threshold_wei` specified more than once
+  --> bot/src/config.rs:91:9
+   |
+10 | #[derive(Debug, Clone, Deserialize)]
+   |                        ----------- first use of `min_profit_threshold_wei`
+...
+91 |     pub min_profit_threshold_wei: Option<U256>, // Keep one declaration
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `max_gas_price_gwei` specified more than once
+  --> bot/src/config.rs:92:9
+   |
+10 | #[derive(Debug, Clone, Deserialize)]
+   |                        ----------- first use of `max_gas_price_gwei`
+...
+92 |     pub max_gas_price_gwei: Option<f64>, // Keep one declaration
+   |         ^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `max_slippage_bps` specified more than once
+  --> bot/src/config.rs:93:9
+   |
+10 | #[derive(Debug, Clone, Deserialize)]
+   |                        ----------- first use of `max_slippage_bps`
+...
+93 |     pub max_slippage_bps: Option<u16>, // Keep one declaration
+   |         ^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `transaction_submission_retries` specified more than once
+  --> bot/src/config.rs:95:9
+   |
+10 | #[derive(Debug, Clone, Deserialize)]
+   |                        ----------- first use of `transaction_submission_retries`
+...
+95 |     pub transaction_submission_retries: Option<usize>, // Keep one declaration
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `gas_estimation_multiplier` specified more than once
+  --> bot/src/config.rs:96:9
+   |
+10 | #[derive(Debug, Clone, Deserialize)]
+   |                        ----------- first use of `gas_estimation_multiplier`
+...
+96 |     pub gas_estimation_multiplier: Option<f64>, // Keep one declaration
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `optimal_loan_search_iterations` specified more than once
+  --> bot/src/config.rs:97:9
+   |
+10 | #[derive(Debug, Clone, Deserialize)]
+   |                        ----------- first use of `optimal_loan_search_iterations`
+...
+97 |     pub optimal_loan_search_iterations: Option<u32>, // Keep one declaration
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `velodrome_router_address` specified more than once
+  --> bot/src/config.rs:99:9
+   |
+10 | #[derive(Debug, Clone, Deserialize)]
+   |                        ----------- first use of `velodrome_router_address`
+...
+99 |     pub velodrome_router_address: Option<Address>, // Keep one declaration
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `uniswap_v3_factory_address` specified more than once
+   --> bot/src/config.rs:101:9
+    |
+10  | #[derive(Debug, Clone, Deserialize)]
+    |                        ----------- first use of `uniswap_v3_factory_address`
+...
+101 |     pub uniswap_v3_factory_address: Option<Address>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `uniswap_v3_quoter_v2_address` specified more than once
+   --> bot/src/config.rs:102:9
+    |
+10  | #[derive(Debug, Clone, Deserialize)]
+    |                        ----------- first use of `uniswap_v3_quoter_v2_address`
+...
+102 |     pub uniswap_v3_quoter_v2_address: Option<Address>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `uniswap_v3_router_address` specified more than once
+   --> bot/src/config.rs:103:9
+    |
+10  | #[derive(Debug, Clone, Deserialize)]
+    |                        ----------- first use of `uniswap_v3_router_address`
+...
+103 |     pub uniswap_v3_router_address: Option<Address>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `initial_block_history_to_scan` specified more than once
+   --> bot/src/config.rs:105:9
+    |
+10  | #[derive(Debug, Clone, Deserialize)]
+    |                        ----------- first use of `initial_block_history_to_scan`
+...
+105 |     pub initial_block_history_to_scan: Option<u64>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `max_block_range_per_query` specified more than once
+   --> bot/src/config.rs:106:9
+    |
+10  | #[derive(Debug, Clone, Deserialize)]
+    |                        ----------- first use of `max_block_range_per_query`
+...
+106 |     pub max_block_range_per_query: Option<u64>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `log_level` specified more than once
+   --> bot/src/config.rs:107:9
+    |
+10  | #[derive(Debug, Clone, Deserialize)]
+    |                        ----------- first use of `log_level`
+...
+107 |     pub log_level: Option<String>, // Keep one declaration
+    |         ^^^^^^^^^ used more than once
+
+error[E0062]: field `use_local_anvil_node` specified more than once
+   --> bot/src/config.rs:108:9
+    |
+10  | #[derive(Debug, Clone, Deserialize)]
+    |                        ----------- first use of `use_local_anvil_node`
+...
+108 |     pub use_local_anvil_node: Option<bool>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `local_anvil_port` specified more than once
+   --> bot/src/config.rs:109:9
+    |
+10  | #[derive(Debug, Clone, Deserialize)]
+    |                        ----------- first use of `local_anvil_port`
+...
+109 |     pub local_anvil_port: Option<u16>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `local_anvil_chain_id` specified more than once
+   --> bot/src/config.rs:110:9
+    |
+10  | #[derive(Debug, Clone, Deserialize)]
+    |                        ----------- first use of `local_anvil_chain_id`
+...
+110 |     pub local_anvil_chain_id: Option<u64>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `local_anvil_gas_limit` specified more than once
+   --> bot/src/config.rs:111:9
+    |
+10  | #[derive(Debug, Clone, Deserialize)]
+    |                        ----------- first use of `local_anvil_gas_limit`
+...
+111 |     pub local_anvil_gas_limit: Option<u64>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `local_anvil_block_time` specified more than once
+   --> bot/src/config.rs:112:9
+    |
+10  | #[derive(Debug, Clone, Deserialize)]
+    |                        ----------- first use of `local_anvil_block_time`
+...
+112 |     pub local_anvil_block_time: Option<u64>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `local_anvil_fork_url` specified more than once
+   --> bot/src/config.rs:113:9
+    |
+10  | #[derive(Debug, Clone, Deserialize)]
+    |                        ----------- first use of `local_anvil_fork_url`
+...
+113 |     pub local_anvil_fork_url: Option<String>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `local_anvil_fork_block_number` specified more than once
+   --> bot/src/config.rs:114:9
+    |
+10  | #[derive(Debug, Clone, Deserialize)]
+    |                        ----------- first use of `local_anvil_fork_block_number`
+...
+114 |     pub local_anvil_fork_block_number: Option<u64>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0308]: mismatched types
+   --> bot/src/config.rs:235:37
+    |
+235 |         weth_address, usdc_address, weth_decimals, usdc_decimals,
+    |                                     ^^^^^^^^^^^^^ expected `Option<u8>`, found `u8`
+    |
+    = note: expected enum `std::option::Option<u8>`
+               found type `u8`
+help: try wrapping the expression in `Some`
+    |
+235 |         weth_address, usdc_address, weth_decimals: Some(weth_decimals), usdc_decimals,
+    |                                     ++++++++++++++++++++             +
+
+error[E0308]: mismatched types
+   --> bot/src/config.rs:235:52
+    |
+235 |         weth_address, usdc_address, weth_decimals, usdc_decimals,
+    |                                                    ^^^^^^^^^^^^^ expected `Option<u8>`, found `u8`
+    |
+    = note: expected enum `std::option::Option<u8>`
+               found type `u8`
+help: try wrapping the expression in `Some`
+    |
+235 |         weth_address, usdc_address, weth_decimals, usdc_decimals: Some(usdc_decimals),
+    |                                                    ++++++++++++++++++++             +
+
+error[E0308]: mismatched types
+   --> bot/src/config.rs:239:68
+    |
+239 |         transaction_submission_retries, gas_estimation_multiplier, optimal_loan_search_iterations,
+    |                                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Option<u32>`, found `u32`
+    |
+    = note: expected enum `std::option::Option<u32>`
+               found type `u32`
+help: try wrapping the expression in `Some`
+    |
+239 |         transaction_submission_retries, gas_estimation_multiplier, optimal_loan_search_iterations: Some(optimal_loan_search_iterations),
+    |                                                                    +++++++++++++++++++++++++++++++++++++                              +
+
+error[E0308]: mismatched types
+   --> bot/src/config.rs:240:29
+    |
+240 |         fetch_timeout_secs, enable_univ3_dynamic_sizing,
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Option<bool>`, found `bool`
+    |
+    = note: expected enum `std::option::Option<bool>`
+               found type `bool`
+help: try wrapping the expression in `Some`
+    |
+240 |         fetch_timeout_secs, enable_univ3_dynamic_sizing: Some(enable_univ3_dynamic_sizing),
+    |                             ++++++++++++++++++++++++++++++++++                           +
+
+error[E0308]: mismatched types
+   --> bot/src/config.rs:241:9
+    |
+241 |         max_priority_fee_per_gas_gwei, fallback_gas_price_gwei,
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Option<f64>`, found `f64`
+    |
+    = note: expected enum `std::option::Option<f64>`
+               found type `f64`
+help: try wrapping the expression in `Some`
+    |
+241 |         max_priority_fee_per_gas_gwei: Some(max_priority_fee_per_gas_gwei), fallback_gas_price_gwei,
+    |         ++++++++++++++++++++++++++++++++++++                             +
+
+error[E0560]: struct `Config` has no field named `min_flashloan_gas_limit`
+   --> bot/src/config.rs:242:38
+    |
+242 |         gas_limit_buffer_percentage, min_flashloan_gas_limit, private_rpc_url, secondary_private_rpc_url,
+    |                                      ^^^^^^^^^^^^^^^^^^^^^^^ `Config` does not have this field
+    |
+    = note: available fields are: `initial_block_history_to_scan`, `max_block_range_per_query`, `log_level`, `use_local_anvil_node`, `local_anvil_port` ... and 38 others
+
+error[E0308]: mismatched types
+   --> bot/src/config.rs:243:9
+    |
+243 |         min_profit_buffer_bps, min_profit_abs_buffer_wei_str,
+    |         ^^^^^^^^^^^^^^^^^^^^^ expected `Option<u16>`, found `u64`
+    |
+    = note: expected enum `std::option::Option<u16>`
+               found type `u64`
+
+error[E0308]: mismatched types
+   --> bot/src/config.rs:243:32
+    |
+243 |         min_profit_buffer_bps, min_profit_abs_buffer_wei_str,
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Option<String>`, found `String`
+    |
+    = note: expected enum `std::option::Option<std::string::String>`
+             found struct `std::string::String`
+help: try wrapping the expression in `Some`
+    |
+243 |         min_profit_buffer_bps, min_profit_abs_buffer_wei_str: Some(min_profit_abs_buffer_wei_str),
+    |                                ++++++++++++++++++++++++++++++++++++                             +
+
+error[E0308]: mismatched types
+   --> bot/src/config.rs:244:9
+    |
+244 |         critical_block_lag_seconds, critical_log_lag_seconds, // Added fields
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Option<u64>`, found `u64`
+    |
+    = note: expected enum `std::option::Option<u64>`
+               found type `u64`
+help: try wrapping the expression in `Some`
+    |
+244 |         critical_block_lag_seconds: Some(critical_block_lag_seconds), critical_log_lag_seconds, // Added fields
+    |         +++++++++++++++++++++++++++++++++                          +
+
+error[E0308]: mismatched types
+   --> bot/src/config.rs:244:37
+    |
+244 |         critical_block_lag_seconds, critical_log_lag_seconds, // Added fields
+    |                                     ^^^^^^^^^^^^^^^^^^^^^^^^ expected `Option<u64>`, found `u64`
+    |
+    = note: expected enum `std::option::Option<u64>`
+               found type `u64`
+help: try wrapping the expression in `Some`
+    |
+244 |         critical_block_lag_seconds, critical_log_lag_seconds: Some(critical_log_lag_seconds), // Added fields
+    |                                     +++++++++++++++++++++++++++++++                        +
+
+error[E0560]: struct `Config` has no field named `min_flashloan_gas_limit`
+   --> bot/src/config.rs:316:13
+    |
+316 |             min_flashloan_gas_limit: Some(300_000),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^ `Config` does not have this field
+    |
+    = note: available fields are: `velodrome_voter_address`, `velodrome_minter_address`, `velodrome_lp_token_address`, `dry_run`
+
+warning: unreachable pattern
+  --> bot/src/config.rs:91:9
+   |
+47 |     pub min_profit_threshold_wei: Option<U256>,
+   |         ------------------------ matches all the relevant values
+...
+91 |     pub min_profit_threshold_wei: Option<U256>, // Keep one declaration
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+   |
+   = note: `#[warn(unreachable_patterns)]` on by default
+
+warning: unreachable pattern
+  --> bot/src/config.rs:92:9
+   |
+48 |     pub max_gas_price_gwei: Option<f64>,
+   |         ------------------ matches all the relevant values
+...
+92 |     pub max_gas_price_gwei: Option<f64>, // Keep one declaration
+   |         ^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+  --> bot/src/config.rs:93:9
+   |
+49 |     pub max_slippage_bps: Option<u16>,
+   |         ---------------- matches all the relevant values
+...
+93 |     pub max_slippage_bps: Option<u16>, // Keep one declaration
+   |         ^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+  --> bot/src/config.rs:95:9
+   |
+52 |     pub transaction_submission_retries: Option<usize>,
+   |         ------------------------------ matches all the relevant values
+...
+95 |     pub transaction_submission_retries: Option<usize>, // Keep one declaration
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+  --> bot/src/config.rs:96:9
+   |
+53 |     pub gas_estimation_multiplier: Option<f64>,
+   |         ------------------------- matches all the relevant values
+...
+96 |     pub gas_estimation_multiplier: Option<f64>, // Keep one declaration
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+  --> bot/src/config.rs:97:9
+   |
+56 |     pub optimal_loan_search_iterations: Option<u32>,
+   |         ------------------------------ matches all the relevant values
+...
+97 |     pub optimal_loan_search_iterations: Option<u32>, // Keep one declaration
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+  --> bot/src/config.rs:99:9
+   |
+26 |     pub velodrome_router_address: Option<Address>,
+   |         ------------------------ matches all the relevant values
+...
+99 |     pub velodrome_router_address: Option<Address>, // Keep one declaration
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+   --> bot/src/config.rs:101:9
+    |
+30  |     pub uniswap_v3_factory_address: Option<Address>,
+    |         -------------------------- matches all the relevant values
+...
+101 |     pub uniswap_v3_factory_address: Option<Address>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+   --> bot/src/config.rs:102:9
+    |
+31  |     pub uniswap_v3_quoter_v2_address: Option<Address>,
+    |         ---------------------------- matches all the relevant values
+...
+102 |     pub uniswap_v3_quoter_v2_address: Option<Address>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+   --> bot/src/config.rs:103:9
+    |
+32  |     pub uniswap_v3_router_address: Option<Address>,
+    |         ------------------------- matches all the relevant values
+...
+103 |     pub uniswap_v3_router_address: Option<Address>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+   --> bot/src/config.rs:105:9
+    |
+35  |     pub initial_block_history_to_scan: Option<u64>,
+    |         ----------------------------- matches all the relevant values
+...
+105 |     pub initial_block_history_to_scan: Option<u64>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+   --> bot/src/config.rs:106:9
+    |
+36  |     pub max_block_range_per_query: Option<u64>,
+    |         ------------------------- matches all the relevant values
+...
+106 |     pub max_block_range_per_query: Option<u64>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+   --> bot/src/config.rs:107:9
+    |
+37  |     pub log_level: Option<String>,
+    |         --------- matches all the relevant values
+...
+107 |     pub log_level: Option<String>, // Keep one declaration
+    |         ^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+   --> bot/src/config.rs:108:9
+    |
+38  |     pub use_local_anvil_node: Option<bool>,
+    |         -------------------- matches all the relevant values
+...
+108 |     pub use_local_anvil_node: Option<bool>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+   --> bot/src/config.rs:109:9
+    |
+39  |     pub local_anvil_port: Option<u16>,
+    |         ---------------- matches all the relevant values
+...
+109 |     pub local_anvil_port: Option<u16>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+   --> bot/src/config.rs:110:9
+    |
+40  |     pub local_anvil_chain_id: Option<u64>,
+    |         -------------------- matches all the relevant values
+...
+110 |     pub local_anvil_chain_id: Option<u64>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+   --> bot/src/config.rs:111:9
+    |
+41  |     pub local_anvil_gas_limit: Option<u64>,
+    |         --------------------- matches all the relevant values
+...
+111 |     pub local_anvil_gas_limit: Option<u64>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+   --> bot/src/config.rs:112:9
+    |
+42  |     pub local_anvil_block_time: Option<u64>,
+    |         ---------------------- matches all the relevant values
+...
+112 |     pub local_anvil_block_time: Option<u64>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+   --> bot/src/config.rs:113:9
+    |
+43  |     pub local_anvil_fork_url: Option<String>,
+    |         -------------------- matches all the relevant values
+...
+113 |     pub local_anvil_fork_url: Option<String>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+   --> bot/src/config.rs:114:9
+    |
+44  |     pub local_anvil_fork_block_number: Option<u64>,
+    |         ----------------------------- matches all the relevant values
+...
+114 |     pub local_anvil_fork_block_number: Option<u64>, // Keep one declaration
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+error[E0004]: non-exhaustive patterns: `DexType::Balancer` and `DexType::Unknown` not covered
+   --> bot/src/simulation.rs:704:11
+    |
+704 |     match dex_type {
+    |           ^^^^^^^^ patterns `DexType::Balancer` and `DexType::Unknown` not covered
+    |
+note: `DexType` defined here
+   --> bot/src/state.rs:47:10
+    |
+47  | pub enum DexType {
+    |          ^^^^^^^
+...
+51  |     Balancer, // Added Balancer
+    |     -------- not covered
+52  |     #[allow(dead_code)] // Keep Unknown if it's a valid state, otherwise remove if not used
+53  |     Unknown,
+    |     ------- not covered
+    = note: the matched value is of type `DexType`
+help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern, a match arm with multiple or-patterns as shown, or multiple match arms
+    |
+707 ~         DexType::Aerodrome => config.aerodrome_router_addr.ok_or_else(|| eyre!("Aerodrome Router address not configured")),
+708 ~         DexType::Balancer | DexType::Unknown => todo!(),
+    |
+
+error[E0004]: non-exhaustive patterns: `DexType::Balancer` and `DexType::Unknown` not covered
+    --> bot/src/simulation.rs:1364:11
+     |
+1364 |     match dex_type {
+     |           ^^^^^^^^ patterns `DexType::Balancer` and `DexType::Unknown` not covered
+     |
+note: `DexType` defined here
+    --> bot/src/state.rs:47:10
+     |
+47   | pub enum DexType {
+     |          ^^^^^^^
+...
+51   |     Balancer, // Added Balancer
+     |     -------- not covered
+52   |     #[allow(dead_code)] // Keep Unknown if it's a valid state, otherwise remove if not used
+53   |     Unknown,
+     |     ------- not covered
+     = note: the matched value is of type `DexType`
+help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern, a match arm with multiple or-patterns as shown, or multiple match arms
+     |
+1367 ~         DexType::Aerodrome => config.aerodrome_router_addr.ok_or_else(|| eyre!("Aerodrome Router address not configured")),
+1368 ~         DexType::Balancer | DexType::Unknown => todo!(),
+     |
+
+warning: unused variable: `weth_price_usd`
+   --> bot/src/transaction.rs:122:53
+    |
+122 | pub fn calculate_profit_thresholds(config: &Config, weth_price_usd: f64) -> (U256, U256) {
+    |                                                     ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_weth_price_usd`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `quoter_v2_bindings`
+  --> bot/src/simulation.rs:80:26
+   |
+80 |             let params = quoter_v2_bindings::QuoteExactInputSingleParams { // Use alias
+   |                          ^^^^^^^^^^^^^^^^^^ use of unresolved module or unlinked crate `quoter_v2_bindings`
+   |
+   = help: if you wanted to use a crate named `quoter_v2_bindings`, use `cargo add quoter_v2_bindings` to add it to your `Cargo.toml`
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `velo_router_bindings`
+   --> bot/src/simulation.rs:104:31
+    |
+104 |             let routes = vec![velo_router_bindings::Route { // Use alias
+    |                               ^^^^^^^^^^^^^^^^^^^^ use of unresolved module or unlinked crate `velo_router_bindings`
+    |
+    = help: if you wanted to use a crate named `velo_router_bindings`, use `cargo add velo_router_bindings` to add it to your `Cargo.toml`
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `quoter_v2_bindings`
+   --> bot/src/simulation.rs:740:26
+    |
+740 |             let params = quoter_v2_bindings::QuoteExactInputSingleParams { // Use alias
+    |                          ^^^^^^^^^^^^^^^^^^ use of unresolved module or unlinked crate `quoter_v2_bindings`
+    |
+    = help: if you wanted to use a crate named `quoter_v2_bindings`, use `cargo add quoter_v2_bindings` to add it to your `Cargo.toml`
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `velo_router_bindings`
+   --> bot/src/simulation.rs:764:31
+    |
+764 |             let routes = vec![velo_router_bindings::Route { // Use alias
+    |                               ^^^^^^^^^^^^^^^^^^^^ use of unresolved module or unlinked crate `velo_router_bindings`
+    |
+    = help: if you wanted to use a crate named `velo_router_bindings`, use `cargo add velo_router_bindings` to add it to your `Cargo.toml`
+
+Some errors have detailed explanations: E0004, E0061, E0062, E0124, E0282, E0308, E0412, E0425, E0428...
+For more information about an error, try `rustc --explain E0004`.
+warning: `ulp1_5` (lib) generated 33 warnings
+error: could not compile `ulp1_5` (lib) due to 232 previous errors; 33 warnings emitted
+warning: build failed, waiting for other jobs to finish...
+warning: `ulp1_5` (lib test) generated 33 warnings (33 duplicates)
+error: could not compile `ulp1_5` (lib test) due to 232 previous errors; 33 warnings emitted
+
+🛑 Shutting down anvil (pid 4168)…
